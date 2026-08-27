@@ -240,8 +240,7 @@ page. `WxScanner` is the same class with the same methods; what differs:
 Rust sources, and a compiled artifact committed beside the sources it came from
 goes out of step with them — this one did, and the live demo served a fixed
 detector bug for a while because rebuilding it was a step someone had to
-remember. Running the command is a smaller thing to ask than trusting that
-nobody forgot.
+remember.
 
 ```sh
 git clone https://github.com/wilinz/wxscan-rs
@@ -254,20 +253,16 @@ RUSTFLAGS="-C target-feature=+simd128" cargo build -p wxscan-wasm \
   --target wasm32-unknown-unknown --profile wasm
 ```
 
-The two siblings are cloned because cvlite and wxing are not on crates.io yet;
-`rust-toolchain.toml` pins the compiler, so the module is the one CI serves.
-`simd128` costs nothing in correctness and takes about 28% off scanning time.
-Then `--from wxscan-rs/target/wasm32-unknown-unknown/wasm`.
+Then `--from wxscan-rs/target/wasm32-unknown-unknown/wasm`. Running `fetch_web`
+with no `--from` prints all of this and exits non-zero, so a build script finds
+out rather than shipping a page with nothing to run.
 
-Running `fetch_web` with no `--from` prints all of this and exits non-zero, so
-a build script finds out rather than shipping a page with nothing to run.
+The TensorFlow Lite runtime beside it *is* committed and needs none of this. It
+moves only when the pinned TFLite version does, and `tool/check_tflite_web.sh`
+fails if it has been left behind when that happened.
 
-The TensorFlow Lite runtime beside it *is* bundled and needs none of this. It
-is an emscripten build of TensorFlow and about a thousand XNNPACK microkernels
-— a quarter of an hour, and an emsdk — and it moves only when the pinned TFLite
-version does. `tools/tflite-wasm` in
-[wxscan-rs](https://github.com/wilinz/wxscan-rs) builds it, and `--from` takes
-that build too where it holds one.
+**[doc/web_build.md](doc/web_build.md)** is the whole of it: what each of the
+four files is, upgrading the runtime, and what CI does differently and why.
 
 Inference is TensorFlow Lite with the XNNPACK delegate, the same runtime the
 other platforms use, so a browser reads the same `.tflite` files. A 1080p frame

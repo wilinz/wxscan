@@ -1,0 +1,21 @@
+# What the committed browser TFLite runtime was built from.
+#
+# wxscan_tflite.js and wxscan_tflite.wasm are an emscripten build of the
+# TensorFlow Lite C runtime — tools/tflite-wasm in the wxscan-rs repository —
+# and they are committed rather than built, because building them wants an
+# emsdk and about a quarter of an hour.
+#
+# That makes them the one pair here that can fall out of step with something
+# without anyone noticing: TENSORFLOW_VERSION has to equal DESKTOP_VERSION in
+# tflite.lock, or a browser runs a different runtime from every other platform.
+# tool/check_tflite_web.sh says so, and CI runs it.
+#
+# To upgrade: raise the version in tflite.lock with update_tflite_lock.sh, then
+#
+#   TENSORFLOW_VERSION=<version> wxscan-rs/tools/tflite-wasm/build.sh
+#   cp out/wxscan_tflite.js out/wxscan_tflite.wasm lib/src/web/assets/
+#   tool/stamp_tflite_web.sh <version>
+
+TENSORFLOW_VERSION=v2.17.1
+SHA256_js=fa08b041c6e6c58fb1085a6ecfb88fe3227ce65a551fe1bd0b28d33bec38b369
+SHA256_wasm=4d849bbb747c4c85b494e36ba9bc535f80f87f8ab60157acdcbd7aea7f88a3e2

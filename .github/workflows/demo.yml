@@ -68,6 +68,14 @@ jobs:
 
       - run: flutter pub get
 
+      # The browser's TFLite runtime is committed rather than built — an emsdk
+      # and a quarter of an hour — so it is the one thing here that can be left
+      # behind when the pinned TensorFlow version moves, with nothing visible
+      # at run time to say so. See packages/wxscan/doc/web_build.md.
+      - name: Check the browser TFLite runtime against the pin
+        working-directory: packages/wxscan
+        run: tool/check_tflite_web.sh
+
       # The browser artifacts are not Flutter assets — see fetch_web's own
       # documentation for why — so they are copied into web/ before the build.
       #
