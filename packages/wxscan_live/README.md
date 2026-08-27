@@ -276,8 +276,11 @@ differs:
   unevenly, so `hasTorch` and `zoomRange` report what the track actually
   claims — usually nothing on a desktop.
 - The four files `wxscan` needs on the web have to be served by the
-  application: run `dart run wxscan:fetch_web` once, which puts them in
-  `web/wxscan/`, where they are found without configuration.
+  application, and the scanner among them has to be built from the Rust
+  sources first — `dart run wxscan:fetch_web` prints how, and
+  [wxscan's README](https://pub.dev/packages/wxscan#building-the-scanner)
+  explains why. They go in `web/wxscan/`, where they are found without
+  configuration.
 
 ## Platforms
 

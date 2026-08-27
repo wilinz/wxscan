@@ -21,15 +21,45 @@ library;
 import 'dart:io';
 import 'dart:isolate';
 
-/// What the browser build needs served, in the order it is reported.
-const _artifacts = [
-  'wxscan_worker.js',
-  'wxscan_wasm.wasm',
-  'wxscan_tflite.js',
-  'wxscan_tflite.wasm',
-];
+/// What the browser build needs served, and where each one comes from.
+///
+/// The scanner is deliberately *not* bundled. It is the one file here built
+/// from the Rust sources, and a compiled artifact committed beside the sources
+/// it came from goes quietly out of step with them — which is exactly what it
+/// did: the live demo served a detector bug for a while after Rust had been
+/// fixed, because rebuilding it was a step someone had to remember. Anything
+/// that has to be remembered eventually is not.
+///
+/// The other three stay. The worker is hand-written and moves with this
+/// package rather than with Rust, and the TensorFlow Lite runtime is an
+/// emscripten build of TensorFlow and a thousand XNNPACK microkernels — a
+/// quarter of an hour, and an emsdk — that moves only when the pinned TFLite
+/// version does. Asking for that to try a package would be asking too much;
+/// asking for one `cargo build` is not.
+enum _Artifact {
+  worker('wxscan_worker.js', bundled: true),
+  scanner('wxscan_wasm.wasm', bundled: false),
+  tfliteJs('wxscan_tflite.js', bundled: true),
+  tfliteWasm('wxscan_tflite.wasm', bundled: true);
 
-Future<int> main(List<String> args) async {
+  const _Artifact(this.name, {required this.bundled});
+
+  final String name;
+
+  /// Whether this package carries a copy, and so whether `--from` is the only
+  /// way to get one.
+  final bool bundled;
+}
+
+/// The Dart VM ignores whatever `main` returns, so the status has to be set
+/// rather than returned. Without this every failure below left the process
+/// reporting success, which a script — or a CI step that now depends on the
+/// scanner being built — would never notice.
+Future<void> main(List<String> args) async {
+  exitCode = await _run(args);
+}
+
+Future<int> _run(List<String> args) async {
   if (args.contains('-h') || args.contains('--help')) {
     stdout.writeln(_usage);
     return 0;
@@ -38,39 +68,42 @@ Future<int> main(List<String> args) async {
   final into = Directory(_option(args, '--into') ?? 'web/wxscan');
   final from = _option(args, '--from');
 
-  final Directory source;
-  if (from != null) {
-    source = Directory(from);
-  } else {
-    final packageRoot = await _packageRoot();
-    if (packageRoot == null) {
-      stderr.writeln('wxscan: could not find the package. Run this from '
-          'an application that depends on wxscan.');
+  final packageRoot = await _packageRoot();
+  if (packageRoot == null) {
+    stderr.writeln('wxscan: could not find the package. Run this from '
+        'an application that depends on wxscan.');
+    return 1;
+  }
+  final bundled = Directory('${packageRoot.path}/lib/src/web/assets');
+
+  // Every source is resolved before anything is written, so a missing
+  // scanner does not leave three of the four files in place and the served
+  // directory in a state that looks half done.
+  final sources = <_Artifact, (File, String)>{};
+  for (final artifact in _Artifact.values) {
+    // A local build wins wherever it has the file, so building only the
+    // scanner — which is the usual case — takes the rest from the package.
+    final built = from == null ? null : File('$from/${artifact.name}');
+    if (built != null && built.existsSync()) {
+      sources[artifact] = (built, _size(built));
+      continue;
+    }
+    if (!artifact.bundled) {
+      stderr.writeln(_notBundled(artifact.name, from));
       return 1;
     }
-    source = Directory('${packageRoot.path}/lib/src/web/assets');
+    final file = File('${bundled.path}/${artifact.name}');
+    if (!file.existsSync()) {
+      stderr.writeln('wxscan: ${file.path} is missing');
+      return 1;
+    }
+    sources[artifact] = (file, '${_size(file)}  (from the package)');
   }
 
   into.createSync(recursive: true);
-  for (final name in _artifacts) {
-    final file = File('${source.path}/$name');
-    if (!file.existsSync()) {
-      // A local build holds the three built artifacts; the worker script only
-      // ever comes from the package.
-      if (from != null && name == 'wxscan_worker.js') {
-        final packageRoot = await _packageRoot();
-        if (packageRoot != null) {
-          File('${packageRoot.path}/lib/src/web/assets/$name')
-              .copySync('${into.path}/$name');
-          stdout.writeln('  $name  (from the package)');
-          continue;
-        }
-      }
-      stderr.writeln('wxscan: ${source.path} does not hold $name');
-      return 1;
-    }
-    file.copySync('${into.path}/$name');
-    stdout.writeln('  $name  ${_size(file)}');
+  for (final MapEntry(key: artifact, value: (file, where)) in sources.entries) {
+    file.copySync('${into.path}/${artifact.name}');
+    stdout.writeln('  ${artifact.name}  $where');
   }
 
   stdout.writeln('\nPut into ${into.path}. If that is not `web/wxscan`, point '
@@ -86,10 +119,36 @@ Places the browser build's files for an application to serve.
 
   --into DIR   where to put them; web/wxscan by default, which is where the
                package looks without being told otherwise
-  --from DIR   take the WebAssembly artifacts from a local build instead of
-               from this package: the output of tools/tflite-wasm/build.sh and
-               of `cargo build -p wxscan-wasm --target wasm32-unknown-unknown`
-               in the wxscan-rs repository
+  --from DIR   take whatever this directory holds from a local build instead
+               of from the package. The scanner (wxscan_wasm.wasm) is not
+               bundled and has to come from here; run it with no --from to be
+               told how to build it.
+''';
+
+/// What to say when the one artifact this package does not carry is not to
+/// hand either. It is the whole of the reader's next step, because they have
+/// no other way to find it out.
+String _notBundled(String name, String? from) => '''
+wxscan: $name is not bundled with this package${from == null ? '' : ', and $from does not hold it'}.
+
+  It is built from the Rust sources rather than committed, so that it cannot
+  fall out of step with them. Building it is one command:
+
+      git clone https://github.com/wilinz/wxscan-rs
+      git clone https://github.com/wilinz/cvlite
+      git clone https://github.com/wilinz/wxing
+      cd wxscan-rs
+      printf '[patch.crates-io]\\ncvlite = { path = "../cvlite" }\\nwxing = { path = "../wxing" }\\n' \\
+        > .cargo/config.toml
+      RUSTFLAGS="-C target-feature=+simd128" cargo build -p wxscan-wasm \\
+        --target wasm32-unknown-unknown --profile wasm
+
+  The two siblings are cloned because cvlite and wxing are not on crates.io
+  yet. Then point this at the output:
+
+      dart run wxscan:fetch_web --from wxscan-rs/target/wasm32-unknown-unknown/wasm
+
+  The other three files come from the package, so nothing else has to be built.
 ''';
 
 String? _option(List<String> args, String name) {

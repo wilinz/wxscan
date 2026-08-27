@@ -31,24 +31,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The scanner's own WebAssembly is built here from the Rust sources
-      # rather than taken from the copy committed in the package.
-      #
-      # Not because a consumer could not compile it: one building for a native
-      # platform already does, since the build hook runs cargo every time. It
-      # is that a hook has no way to deliver these. It emits code assets —
-      # libraries the Dart runtime loads — and a web build asks for none, so
-      # the hook returns before it reaches Rust at all; and a hook writes into
-      # its own output directory, never into an application's `web/`. So the
-      # browser's files are committed and copied by hand, which makes them a
-      # thing that can fall behind the sources they came from. They did: the
-      # demo served a detector bug for a while after Rust had been fixed.
-      #
-      # Here there is no such constraint, and a build takes seconds.
+      # The scanner's WebAssembly is built here because there is nowhere else
+      # to get it: the package does not carry one. It used to, and a compiled
+      # artifact sitting beside the sources it came from went out of step with
+      # them — the demo served a detector bug for a while after Rust had been
+      # fixed, because rebuilding it was a step someone had to remember.
       #
       # cvlite and wxing are not on crates.io yet, so they are checked out
       # beside wxscan-rs and patched in exactly as wxscan-dev/link.sh does on a
       # developer's machine — the same wiring, so CI builds what they build.
+      # The toolchain comes from wxscan-rs's rust-toolchain.toml, so it is the
+      # same compiler too.
       - uses: actions/checkout@v4
         with: { repository: wilinz/wxscan-rs, path: _rust/wxscan-rs }
       - uses: actions/checkout@v4
@@ -88,18 +81,18 @@ jobs:
       # The whole directory, not a list: a fifth artifact should arrive here
       # without anyone remembering to add it, and the check below is what says
       # so if the path ever moves.
+      # The command a reader is told to run, given the build it needs. It takes
+      # the scanner from there and the other three from the package — the
+      # TFLite runtime among them, which is not built here: emscripten, a clone
+      # of TensorFlow and a thousand XNNPACK microkernels, a quarter of an hour
+      # at best, and it moves only when the pinned TFLite version does. It
+      # exits non-zero when the scanner is not where it was told, so a build
+      # that quietly produced nothing cannot reach the page.
       - name: Place the browser artifacts
         run: |
-          mkdir -p web/wxscan
-          cp ../../wxscan/lib/src/web/assets/* web/wxscan/
-          test "$(ls web/wxscan | wc -l)" -ge 4
-          # The one that was just built wins over the committed copy. The
-          # TFLite runtime beside it is not built here: emscripten, a clone of
-          # TensorFlow and a thousand XNNPACK microkernels, a quarter of an
-          # hour at best, and it moves only when the pinned TFLite version
-          # does. That pair stays as committed.
-          cp "${{ github.workspace }}/_rust/wxscan-rs/target/wasm32-unknown-unknown/wasm/wxscan_wasm.wasm" \
-             web/wxscan/wxscan_wasm.wasm
+          dart run wxscan:fetch_web \
+            --from "${{ github.workspace }}/_rust/wxscan-rs/target/wasm32-unknown-unknown/wasm"
+          test "$(ls web/wxscan | wc -l)" -eq 4
           ls -l web/wxscan
 
       # A project page is served from a subdirectory, and every URL the built

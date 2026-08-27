@@ -92,7 +92,7 @@ WxScan.scanStream.listen((outcome) {
 |---|---|
 | What comes back from a frame | [Results](packages/wxscan/README.md#results) · [live results](packages/wxscan_live/README.md#results) |
 | What the weights do, and life without them | [Models](packages/wxscan/README.md#models) |
-| Serving it in a browser | [wxscan](packages/wxscan/README.md#the-browser) · [wxscan_live](packages/wxscan_live/README.md#the-browser) |
+| Serving it in a browser | [wxscan](packages/wxscan/README.md#the-browser) · [building the scanner](packages/wxscan/README.md#building-the-scanner) · [wxscan_live](packages/wxscan_live/README.md#the-browser) |
 | How the native library is built and found | [the build hook](packages/wxscan/README.md#the-build-hook) · [the native library](packages/wxscan_live/README.md#the-native-library) |
 | A whole scanning screen to read or copy | [`example/lib/scan_page.dart`](packages/wxscan_live/example/lib/scan_page.dart) |
 
@@ -133,7 +133,7 @@ TFLite library, so `dart test` runs the scanner with no Flutter involved at all.
 | iOS | 13.0+ | AVFoundation, 13.0+ |
 | macOS | 10.15+, arm64 | AVFoundation, 10.15+ |
 | Linux, Windows | x86_64, and arm64 on Linux | — |
-| Web | WebAssembly in a worker | `getUserMedia`, preview as a platform view |
+| Web | WebAssembly in a worker; the scanner module is [built, not bundled](packages/wxscan/README.md#building-the-scanner) | `getUserMedia`, preview as a platform view |
 | Dart, no Flutter | `dart run` and `dart test` | — |
 
 32-bit x86 Android is not supported: LiteRT publishes no build for it, so an

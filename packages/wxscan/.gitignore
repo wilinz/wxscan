@@ -1,2 +1,6 @@
 # Rust build output
 rust/target/
+
+# The scanner is built from the Rust sources rather than committed; see
+# bin/fetch_web.dart for why, and for how to build it.
+lib/src/web/assets/wxscan_wasm.wasm

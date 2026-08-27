@@ -217,22 +217,57 @@ page. `WxScanner` is the same class with the same methods; what differs:
 - `scanGraySync` and the other `*Sync` methods throw `UnsupportedError`. The
   engine answers by message from a worker, so there is nothing to return in the
   same call.
-- Four files have to be served by the application. They ship inside this
-  package, and one command copies them out:
+- Four files have to be served by the application, and **the scanner among
+  them has to be built** — see [Building the scanner](#building-the-scanner)
+  below. Three of the four ship inside this package; one command places all
+  four:
 
   ```sh
-  dart run wxscan:fetch_web        # into web/wxscan
+  dart run wxscan:fetch_web --from <the cargo build's output>
   ```
 
-  Nothing else needs configuring, since that is where the package looks. For
-  another directory, pass `--into` and say where with `configureWxScanWeb` from
-  `package:wxscan/web.dart`.
+  `web/wxscan` is where they go and where the package looks, so nothing else
+  needs configuring. For another directory, pass `--into` and say where with
+  `configureWxScanWeb` from `package:wxscan/web.dart`.
 
   They are files rather than declared assets because declaring Flutter assets
   would make this a Flutter package, and `dart run` and `dart test` would stop
-  working. `crates/wxscan-wasm` and `tools/tflite-wasm` in
-  [wxscan-rs](https://github.com/wilinz/wxscan-rs) build the three WebAssembly
-  ones; `--from` takes them from such a build instead of from here.
+  working.
+
+### Building the scanner
+
+`wxscan_wasm.wasm` is not bundled. It is the one file here compiled from the
+Rust sources, and a compiled artifact committed beside the sources it came from
+goes out of step with them — this one did, and the live demo served a fixed
+detector bug for a while because rebuilding it was a step someone had to
+remember. Running the command is a smaller thing to ask than trusting that
+nobody forgot.
+
+```sh
+git clone https://github.com/wilinz/wxscan-rs
+git clone https://github.com/wilinz/cvlite
+git clone https://github.com/wilinz/wxing
+cd wxscan-rs
+printf '[patch.crates-io]\ncvlite = { path = "../cvlite" }\nwxing = { path = "../wxing" }\n' \
+  > .cargo/config.toml
+RUSTFLAGS="-C target-feature=+simd128" cargo build -p wxscan-wasm \
+  --target wasm32-unknown-unknown --profile wasm
+```
+
+The two siblings are cloned because cvlite and wxing are not on crates.io yet;
+`rust-toolchain.toml` pins the compiler, so the module is the one CI serves.
+`simd128` costs nothing in correctness and takes about 28% off scanning time.
+Then `--from wxscan-rs/target/wasm32-unknown-unknown/wasm`.
+
+Running `fetch_web` with no `--from` prints all of this and exits non-zero, so
+a build script finds out rather than shipping a page with nothing to run.
+
+The TensorFlow Lite runtime beside it *is* bundled and needs none of this. It
+is an emscripten build of TensorFlow and about a thousand XNNPACK microkernels
+— a quarter of an hour, and an emsdk — and it moves only when the pinned TFLite
+version does. `tools/tflite-wasm` in
+[wxscan-rs](https://github.com/wilinz/wxscan-rs) builds it, and `--from` takes
+that build too where it holds one.
 
 Inference is TensorFlow Lite with the XNNPACK delegate, the same runtime the
 other platforms use, so a browser reads the same `.tflite` files. A 1080p frame
