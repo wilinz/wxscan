@@ -46,8 +46,7 @@ final scanner = await WxScanner.create(
   srModel: await _asset('assets/models/sr.tflite'),
 );
 
-// `gray` is 8-bit grayscale, one byte per pixel, row after row.
-final outcome = await scanner.scanGray(gray, width, height);
+final outcome = await scanner.scanPath('/path/to/photo.jpg');
 for (final r in outcome.results) {
   print('${r.text} (v${r.version}/${r.ecLevel}/${r.charset})');
 }
@@ -57,6 +56,77 @@ scanner.dispose();
 
 Both weights are optional. Leaving them out decodes without the CNN stages,
 which still reads ordinary codes — see [Models](#models).
+
+## Which method to call
+
+Four ways in, differing only in what you already hold. None of them converts
+pixels in Dart.
+
+| You have | Call | Notes |
+|---|---|---|
+| A file on disk | `scanPath` | Reads and decodes natively; nothing is materialised in Dart |
+| Decoded pixels | `scanPixels` | RGB, RGBA, BGR or BGRA, tightly packed |
+| Grayscale | `scanGray` | One byte per pixel, rows packed |
+| A camera frame | `scanFrame` | Adds a row stride, a rotation and `mirror` |
+
+**Prefer `scanPath` where you have a path.** A 12 megapixel photograph is 48 MB
+as RGBA; decoding it in Dart copies that into the worker isolate and again into
+native memory, and none of those copies buys anything.
+
+```dart
+try {
+  final outcome = await scanner.scanPath(file.path);
+  if (outcome.results.isEmpty) {
+    // A picture with no code in it. Say so — and if `outcome.candidates` is
+    // not empty, a symbol *was* found and could not be read, which is worth
+    // saying differently.
+  }
+} on PictureUnreadable catch (e) {
+  // Not a picture, or not one this build decodes. Different from the above,
+  // and the reader wants to be told something different.
+}
+```
+
+That distinction is the point of the exception. A file nothing could open used
+to be indistinguishable from a picture with no code in it, and the two call for
+different things to be said.
+
+**HEIC needs the platform.** This build decodes PNG, JPEG, BMP, GIF, WebP and
+TIFF. HEIC — which is most of an iPhone's photo library — needs a system
+framework, and `scanPath` reports it as
+`PictureReadFailure.unsupportedFormat`. Fall back to the platform's own
+decoder, which reads everything the device can display:
+
+```dart
+Future<ScanOutcome> scanAnyPicture(WxScanner scanner, String path) async {
+  try {
+    return await scanner.scanPath(path);
+  } on PictureUnreadable {
+    // ui.instantiateImageCodec is Flutter's decoder, and it reads HEIC.
+    final codec = await ui.instantiateImageCodec(await File(path).readAsBytes());
+    final image = (await codec.getNextFrame()).image;
+    try {
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      // Awaited inside the try, so `finally` does not dispose the image
+      // out from under the scan.
+      return await scanner.scanPixels(
+        data!.buffer.asUint8List(),
+        image.width,
+        image.height,
+        format: WxPixelFormat.rgba,
+      );
+    } finally {
+      image.dispose();
+      codec.dispose();
+    }
+  }
+}
+```
+
+Most pickers hide this: `image_picker` on iOS sniffs the first bytes, finds
+neither JPEG nor PNG nor GIF, and re-encodes to JPEG on the way to disk. The
+paths worth guarding are the ones arriving from somewhere else — a file shared
+into the application, say.
 
 ## Working with a scanner
 
@@ -75,6 +145,18 @@ For camera frames, `scanFrame` takes a row stride, a rotation, and a `mirror`
 flag that mirrors the returned x coordinates. The frame itself is never
 mirrored, because the detector is trained on unmirrored input; the flag exists
 so coordinates line up with a preview displayed mirrored.
+
+Mismatched dimensions raise `ArgumentError` rather than returning an empty
+result. A buffer that does not match its width and height is a mistake in the
+call, and an empty outcome would hide it as a frame with nothing in it.
+
+### Tuning detection
+
+`confidenceThreshold`, `nmsThreshold` and `scaleFactor` read and write on the
+scanner without contending for its lock, so they can be changed between frames.
+The defaults are the ones the upstream algorithm ships and are the right place
+to start; lowering `confidenceThreshold` finds fainter symbols at the cost of
+more candidates that decode to nothing, which `hasUndecodable` then reports.
 
 ## Results
 

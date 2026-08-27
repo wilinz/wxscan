@@ -72,8 +72,10 @@ WxScan.scanStream.listen((outcome) {
 });
 ```
 
-**4. Show the preview.** It is a Flutter texture, rotated for the current
-interface orientation:
+**4. Show the preview.** `WxScanPreview` is the image and nothing else — a
+texture natively, a platform view in a browser — held upright in the device's
+natural orientation, so whatever the screen has rotated to is made up around
+it:
 
 ```dart
 StreamBuilder<WxPreviewSize>(
@@ -81,13 +83,33 @@ StreamBuilder<WxPreviewSize>(
   builder: (context, snapshot) {
     final size = snapshot.data;
     if (size == null) return const SizedBox.shrink();
-    return RotatedBox(
-      quarterTurns: size.quarterTurns,
-      child: Texture(textureId: info.textureId),
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          // The box is sized *after* the turn, and the turn is applied
+          // inside it. The two have to agree or BoxFit stretches by the
+          // wrong ratio.
+          width: size.rotatedWidth.toDouble(),
+          height: size.rotatedHeight.toDouble(),
+          child: RotatedBox(
+            quarterTurns: size.quarterTurns,
+            child: SizedBox(
+              width: size.width.toDouble(),
+              height: size.height.toDouble(),
+              child: WxScanPreview(info: info),
+            ),
+          ),
+        ),
+      ),
     );
   },
 );
 ```
+
+Subscribe to `previewSizeStream` rather than reading the size once: it emits
+again when the screen rotates, and on a device that fell back to a different
+capture size than the one asked for.
 
 Call `WxScan.dispose()` when leaving the screen. `setScanning(false)` pauses
 decoding while leaving the camera and preview running, which is what you want
@@ -117,7 +139,7 @@ can be mapped onto the preview without further correction.
 
 ## Camera control
 
-`setResolution`, `setTorch`, `hasTorch`, `setZoom`, `zoomRange`, and
+`setResolution`, `setTorch`, `hasTorch`, `setZoom`, `zoomRange`, `focusAt`, and
 `grabFrame`, which returns the most recent frame as an upright JPEG at the size
 being decoded — usable as a frozen picture while the user picks among several
 codes.
@@ -125,6 +147,104 @@ codes.
 Higher resolutions cost proportionally more per frame, but a dense symbol
 cannot be decoded at all without enough pixels. 720p is enough for everyday
 codes.
+
+Each setting reads back from what the device confirmed rather than from what
+was asked for: `setZoom` returns the ratio it clamped to, and `torchEnabled` is
+false on hardware with no torch however many times it is set.
+
+### Focus
+
+`focusAt(x, y)` points focus and exposure at one place in the picture, and
+returns whether the device took it — false where the camera is closed, the
+point is outside the picture, or the hardware has no focus to point, which
+includes every browser. Both revert to their continuous modes after a few
+seconds, so a scanner left alone goes on focusing by itself.
+
+**The coordinates are fractions of the preview, in the space
+`previewWidth` and `previewHeight` describe — before any
+`quarterTurns` the screen asks for.** A tap therefore has to be brought back
+through the same transform the preview was drawn with: undo the fit, then undo
+the turn.
+
+```dart
+// `tap` is local to the box the preview covers, `size` is the current
+// WxPreviewSize.
+final scale = math.max(box.width / size.rotatedWidth,
+                       box.height / size.rotatedHeight);
+final dx = (box.width - size.rotatedWidth * scale) / 2;
+final dy = (box.height - size.rotatedHeight * scale) / 2;
+final rx = (tap.dx - dx) / (size.rotatedWidth * scale);
+final ry = (tap.dy - dy) / (size.rotatedHeight * scale);
+if (rx < 0 || rx > 1 || ry < 0 || ry > 1) return;  // outside the picture
+
+// Undo RotatedBox's clockwise quarter turns.
+final (x, y) = switch (size.quarterTurns) {
+  1 => (ry, 1 - rx),
+  2 => (1 - rx, 1 - ry),
+  3 => (1 - ry, rx),
+  _ => (rx, ry),
+};
+await WxScan.focusAt(x, y);
+```
+
+A `ScanResult`'s own coordinates are in the scanned frame, which is upright
+with respect to the screen — the same space, past the fit — so focusing on a
+code found in a frame needs only the second half: divide its centre by
+`ScanOutcome.width` and `height`, then undo the turns.
+
+`example/lib/scan_page.dart` does both, one for the tap and one for focusing
+automatically on a code that was seen and could not be read.
+
+## Best practices
+
+**Follow the application's lifecycle.** Scanning in the background costs
+battery and produces frames nobody sees:
+
+```dart
+@override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  WxScan.setScanning(state == AppLifecycleState.resumed);
+}
+```
+
+**`setScanning(false)`, not `dispose()`, for a pause.** It stops decoding and
+leaves the camera and the preview running, which is what a result sheet or a
+pushed page wants. `dispose()` is for leaving the screen, and every screen that
+initialises must call it — a second `initialize` while one is still open
+returns the camera already running rather than opening a second one, but a
+screen that never disposes keeps the camera for the life of the process.
+
+**Treat `hasUndecodable` as "move closer", not as failure.** A candidate with
+no result means the detector found a symbol the decoder could not read — almost
+always too small in the frame, or too soft. Two things help, and they help
+independently:
+
+- *Zoom, gradually.* Compute a target from how much of the frame the candidate
+  fills, then walk towards it in small steps rather than setting it in one
+  call. A ratio that jumps throws the code the user was holding steady out of
+  frame, and reads as a scanner guessing. Note that a camera zooms about the
+  centre of the picture and nowhere else, so a code near an edge has little
+  room before zooming pushes it out — better to wait for the hand to move over.
+- *Focus on it.* A small code is usually a soft one, sitting somewhere inside
+  the frame while continuous focus, which weighs the middle, holds the wall
+  behind it sharp. `focusAt` on the candidate's centre is often the whole
+  difference, and it works on codes too far off centre to zoom towards.
+
+Require several frames to agree before acting on either. One frame can
+misdetect, and a scanner that lurches at every stray candidate is worse than
+one that waits three frames.
+
+**Freeze the picture before asking the user to pick.** When a frame decodes
+more than one code, the markers belong to *that* frame; with the preview still
+running the picture moves under them with every tremor of the hand and they can
+never be tapped accurately. `grabFrame()` returns that very frame as a JPEG —
+show it over the preview, with `setScanning(false)`, and the markers line up
+for free.
+
+**Stand in for the camera in tests.** Every call goes through
+`WxScanPlatform.instance`; assign a subclass to it and the whole native side is
+replaced, so a widget test can drive scan results, rotations and zoom clamping
+without a device.
 
 ## Models
 
