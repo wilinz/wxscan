@@ -32,11 +32,19 @@ jobs:
       - uses: actions/checkout@v4
 
       # The scanner's own WebAssembly is built here from the Rust sources
-      # rather than taken from the copy committed in the package. That copy is
-      # for people installing from pub.dev, who have no Rust toolchain — and it
-      # is a file that can fall behind the sources it came from, which it did:
-      # the demo served a detector bug for a while after Rust had been fixed.
-      # A build takes seconds and cannot be out of step with anything.
+      # rather than taken from the copy committed in the package.
+      #
+      # Not because a consumer could not compile it: one building for a native
+      # platform already does, since the build hook runs cargo every time. It
+      # is that a hook has no way to deliver these. It emits code assets —
+      # libraries the Dart runtime loads — and a web build asks for none, so
+      # the hook returns before it reaches Rust at all; and a hook writes into
+      # its own output directory, never into an application's `web/`. So the
+      # browser's files are committed and copied by hand, which makes them a
+      # thing that can fall behind the sources they came from. They did: the
+      # demo served a detector bug for a while after Rust had been fixed.
+      #
+      # Here there is no such constraint, and a build takes seconds.
       #
       # cvlite and wxing are not on crates.io yet, so they are checked out
       # beside wxscan-rs and patched in exactly as wxscan-dev/link.sh does on a
