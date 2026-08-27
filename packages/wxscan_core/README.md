@@ -119,6 +119,28 @@ Downloads are cached in the hook's shared output directory, so only the first
 build pays for them. That build also compiles the Rust sources, which takes a
 few minutes; later builds are incremental.
 
+## The browser
+
+The web build is the same algorithm and the same weights, compiled to
+WebAssembly, running in a worker so that decoding a frame does not block the
+page. `WxScanner` is the same class with the same methods; what differs:
+
+- `scanGraySync` and the other `*Sync` methods throw `UnsupportedError`. The
+  engine answers by message from a worker, so there is nothing to return in the
+  same call.
+- Four files have to be served by the application, since this package ships no
+  assets: `lib/src/web/assets/wxscan_worker.js` from here, and
+  `wxscan_wasm.wasm`, `wxscan_tflite.js` and `wxscan_tflite.wasm`, which
+  `crates/wxscan-wasm` and `tools/tflite-wasm` build in
+  [wxscan-rs](https://github.com/wilinz/wxscan-rs). Put them in `web/wxscan/`
+  and nothing needs configuring; put them elsewhere and say so with
+  `configureWxScanWeb` from `package:wxscan_core/web.dart`.
+
+Inference is TensorFlow Lite with the XNNPACK delegate, the same runtime the
+other platforms use, so a browser reads the same `.tflite` files. A 1080p frame
+takes about 220 ms against a native 135 ms, of which inference is 8 ms; the
+rest is the decoder, in the same proportion as native.
+
 ## Platforms
 
 | Platform | Notes |
@@ -128,6 +150,7 @@ few minutes; later builds are incremental.
 | macOS | 10.15+, arm64 |
 | Linux, Windows | x86_64 (Linux also arm64) |
 | Dart (no Flutter) | macOS, Linux, Windows — `dart run` and `dart test` build and load the library through the hook |
+| Web | WebAssembly in a worker; see [The browser](#the-browser) |
 
 ## Licence
 

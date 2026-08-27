@@ -19,4 +19,11 @@
 library;
 
 export 'src/result.dart' show ScanResult, ScanOutcome, ScanPoint, ScanQuad;
-export 'src/scanner.dart' show WxScanner, WxPixelFormat, parseFrameJson;
+export 'src/frame_json.dart' show parseFrameJson;
+// The scanner is the FFI one everywhere a shared library can be opened, and
+// the WebAssembly one in a browser, where it cannot. Both present the same
+// API; the browser's `*Sync` methods throw, because its engine answers by
+// message from a worker rather than in the same call.
+export 'src/scanner.dart'
+    if (dart.library.js_interop) 'src/web/scanner_web.dart'
+    show WxScanner, WxPixelFormat;
