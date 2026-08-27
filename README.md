@@ -3,6 +3,17 @@
 QR scanning for Flutter, backed by a Rust port of the wechat_qrcode algorithm
 (CNN detection, super resolution, decoding). No OpenCV.
 
+Using it in an application:
+
+```sh
+flutter pub add wxscan          # live camera scanning
+flutter pub add wxscan_core     # decoding images, no camera
+```
+
+Each package's README has a quick start, weights included:
+[wxscan](packages/wxscan/README.md), [wxscan_core](packages/wxscan_core/README.md).
+The rest of this file is about the repository itself.
+
 ## Packages
 
 | Package | What it is |

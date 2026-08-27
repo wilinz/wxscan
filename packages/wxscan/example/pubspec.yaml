@@ -27,8 +27,8 @@ flutter:
   uses-material-design: true
 
   assets:
-    # Converted from the published Caffe models by tools/model_conversion in
-    # the wxscan-rs repository.
+    # Prebuilt weights from github.com/wilinz/wxscan-weights, which also holds
+    # the scripts that convert them from the published Caffe models.
     - assets/models/detect.tflite
     - assets/models/sr.tflite
     # Sample image for the startup self-test.

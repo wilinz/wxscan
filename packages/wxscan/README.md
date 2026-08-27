@@ -12,13 +12,48 @@ To decode a still image instead, use
 [`wxscan_core`](https://pub.dev/packages/wxscan_core), which exposes the same
 scanner to Dart.
 
-## Usage
+## Quick start
+
+```sh
+flutter pub add wxscan
+```
+
+**1. The weights.** They are not bundled. Download `detect.tflite` and
+`sr.tflite` from
+[wxscan-weights](https://github.com/wilinz/wxscan-weights), put them in
+`assets/models/`, and declare the folder in `pubspec.yaml`:
+
+```yaml
+flutter:
+  assets:
+    - assets/models/
+```
+
+**2. Camera permission.** The plugin does not ask for it; it fails with a
+`NO_PERMISSION` `PlatformException` if it has not been granted. Declare it, and
+request it with a package such as
+[`permission_handler`](https://pub.dev/packages/permission_handler) before
+calling `initialize`:
+
+| Platform | Where |
+|---|---|
+| Android | `<uses-permission android:name="android.permission.CAMERA" />` in `AndroidManifest.xml` |
+| iOS, macOS | `NSCameraUsageDescription` in `Info.plist` |
+| macOS | also `com.apple.security.device.camera` in both `.entitlements` files |
+
+**3. Start the camera and listen.**
 
 ```dart
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:wxscan/wxscan.dart';
+
+Future<Uint8List> _asset(String path) async =>
+    (await rootBundle.load(path)).buffer.asUint8List();
+
 final info = await WxScan.initialize(
   resolution: WxResolution.p720,
-  detectModel: detectBytes,
-  srModel: srBytes,
+  detectModel: await _asset('assets/models/detect.tflite'),
+  srModel: await _asset('assets/models/sr.tflite'),
 );
 
 WxScan.scanStream.listen((outcome) {
@@ -26,8 +61,12 @@ WxScan.scanStream.listen((outcome) {
     print(r.text);
   }
 });
+```
 
-// The preview, rotated for the current interface orientation.
+**4. Show the preview.** It is a Flutter texture, rotated for the current
+interface orientation:
+
+```dart
 StreamBuilder<WxPreviewSize>(
   stream: WxScan.previewSizeStream,
   builder: (context, snapshot) {
@@ -41,12 +80,13 @@ StreamBuilder<WxPreviewSize>(
 );
 ```
 
-Camera permission has to be granted before `initialize`, which otherwise throws
-a `NO_PERMISSION` `PlatformException`.
-
 Call `WxScan.dispose()` when leaving the screen. `setScanning(false)` pauses
 decoding while leaving the camera and preview running, which is what you want
 while a result sheet is up.
+
+[`packages/wxscan/example`](example) is a working application doing all of the
+above, plus torch, zoom, decoding from the photo library and picking among
+several codes in one frame.
 
 ## Results
 

@@ -12,14 +12,36 @@ and bundled by a [build hook](https://dart.dev/tools/hooks), so it works under
 `dart run` and `dart test` as well as in a Flutter application, and there are no
 platform build files to maintain.
 
-## Usage
+## Quick start
+
+```sh
+flutter pub add wxscan_core     # or `dart pub add wxscan_core` outside Flutter
+```
+
+The CNN weights are not bundled with the package. Download `detect.tflite` and
+`sr.tflite` from
+[wxscan-weights](https://github.com/wilinz/wxscan-weights), put them in
+`assets/models/`, and declare the folder in `pubspec.yaml`:
+
+```yaml
+flutter:
+  assets:
+    - assets/models/
+```
 
 ```dart
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:wxscan_core/wxscan_core.dart';
+
+Future<Uint8List> _asset(String path) async =>
+    (await rootBundle.load(path)).buffer.asUint8List();
+
 final scanner = await WxScanner.create(
-  detectModel: detectBytes,
-  srModel: srBytes,
+  detectModel: await _asset('assets/models/detect.tflite'),
+  srModel: await _asset('assets/models/sr.tflite'),
 );
 
+// `gray` is 8-bit grayscale, one byte per pixel, row after row.
 final outcome = await scanner.scanGray(gray, width, height);
 for (final r in outcome.results) {
   print('${r.text} (v${r.version}/${r.ecLevel}/${r.charset})');
@@ -27,6 +49,11 @@ for (final r in outcome.results) {
 
 scanner.dispose();
 ```
+
+Both weights are optional. Leaving them out decodes without the CNN stages,
+which still reads ordinary codes — see [Models](#models).
+
+## Working with a scanner
 
 Creating a scanner is expensive, since it builds a TFLite interpreter, so keep
 one for as long as you are scanning. One instance decodes one image at a time;
