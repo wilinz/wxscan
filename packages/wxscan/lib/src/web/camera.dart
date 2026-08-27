@@ -29,7 +29,7 @@ extension type _Video(JSObject _) implements JSObject {
 extension type _Canvas(JSObject _) implements JSObject {
   external set width(int value);
   external set height(int value);
-  external JSObject? getContext(String kind);
+  external JSObject? getContext(String kind, [JSObject options]);
   external JSString toDataURL(String type, double quality);
 }
 
@@ -59,6 +59,14 @@ class WxCamera {
 
   final _Canvas _canvas;
   final _Context _context;
+
+  var _width = 0, _height = 0;
+
+  /// Whether a frame request is outstanding, what it will call, and the one
+  /// JS wrapper it goes through. See [onFrame].
+  var _armed = false;
+  void Function()? _ready;
+  JSFunction? _frameCallback;
 
   int get width => video.videoWidth;
   int get height => video.videoHeight;
@@ -93,8 +101,14 @@ class WxCamera {
     await _waitForSize(element);
 
     final canvas = _Canvas(_createElement('canvas'));
+    // Without this a browser keeps the canvas on the GPU, and every frame's
+    // `getImageData` waits on a readback across that boundary — the one part
+    // of a scan that runs on the page's own thread, and so the one that shows
+    // up as a stutter in the preview.
+    final options = JSObject()
+      ..setProperty('willReadFrequently'.toJS, true.toJS);
     return WxCamera._(
-        stream, element, canvas, _Context(canvas.getContext('2d')!));
+        stream, element, canvas, _Context(canvas.getContext('2d', options)!));
   }
 
   /// Waits for the video to know its size, which it does not at `play`.
@@ -108,9 +122,15 @@ class WxCamera {
   WxFrame? grab() {
     final w = video.videoWidth, h = video.videoHeight;
     if (w == 0 || h == 0) return null;
-    _canvas
-      ..width = w
-      ..height = h;
+    // Assigning either dimension clears the canvas and reallocates its backing
+    // store, so it is done only when the track's size actually changes.
+    if (w != _width || h != _height) {
+      _canvas
+        ..width = w
+        ..height = h;
+      _width = w;
+      _height = h;
+    }
     _context.drawImage(video, 0, 0, w, h);
     final data = _context.getImageData(0, 0, w, h);
     final pixels = data.getProperty<JSUint8Array>('data'.toJS).toDart;
@@ -123,6 +143,33 @@ class WxCamera {
     final url = _canvas.toDataURL('image/jpeg', 0.9).toDart;
     final comma = url.indexOf(',');
     return comma < 0 ? null : _base64(url.substring(comma + 1));
+  }
+
+  /// Calls [ready] once, when the track has a frame the page has not seen.
+  ///
+  /// `requestVideoFrameCallback` is what a browser uses to say a new frame has
+  /// been presented. Driving the pump from it means no frame is ever scanned
+  /// twice — a wasted scan costs as much as a real one — and none is scanned
+  /// stale. Where it is missing the caller falls back to its timer, which is
+  /// why this reports whether it took the request.
+  ///
+  /// At most one request stands at a time, and the callback crossing to JS is
+  /// made once: asking again while one is outstanding replaces what it will
+  /// call, and nothing more. Both matter because this is asked every frame —
+  /// two callers can end up asking for the same camera, and each would
+  /// otherwise leave behind a chain of its own and a `toJS` wrapper the engine
+  /// never collects.
+  bool onFrame(void Function() ready) {
+    if (!video.has('requestVideoFrameCallback')) return false;
+    _ready = ready;
+    if (_armed) return true;
+    _armed = true;
+    _frameCallback ??= ((JSAny? _, JSAny? __) {
+      _armed = false;
+      _ready?.call();
+    }).toJS;
+    video.callMethod<JSAny?>('requestVideoFrameCallback'.toJS, _frameCallback!);
+    return true;
   }
 
   JSObject? _track() {

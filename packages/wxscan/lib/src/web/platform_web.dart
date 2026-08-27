@@ -42,12 +42,15 @@ class WxScanWeb extends WxScanPlatform {
   Timer? _pump;
   var _scanning = true;
   var _busy = false;
+  var _driven = false;
 
   final _scans = StreamController<String>.broadcast();
   final _sizes = StreamController<Map<String, dynamic>>.broadcast();
 
-  /// The element the preview shows, once the camera is open.
+  /// The element the preview shows, once the camera is open, and the platform
+  /// view's own element that holds it.
   static JSObject? _previewElement;
+  static JSObject? _previewHost;
   static var _viewRegistered = false;
 
   @override
@@ -104,7 +107,7 @@ class WxScanWeb extends WxScanPlatform {
   }
 
   void _registerView(WxCamera camera) {
-    _previewElement = camera.video;
+    _showPreview(camera.video);
     if (_viewRegistered) return;
     _viewRegistered = true;
     // The factory is registered once and hands back whichever element the
@@ -114,6 +117,7 @@ class WxScanWeb extends WxScanPlatform {
       (int viewId) {
         final host = _createElement('div');
         host.setProperty('style'.toJS, 'width:100%;height:100%'.toJS);
+        _previewHost = host;
         final element = _previewElement;
         if (element != null) {
           host.callMethod<JSAny?>('appendChild'.toJS, element);
@@ -123,29 +127,61 @@ class WxScanWeb extends WxScanPlatform {
     );
   }
 
+  /// Puts [element] on screen as the preview.
+  ///
+  /// The view factory runs once, when the platform view is created, so a
+  /// camera opened after that — a change of resolution, or initialising again
+  /// — has to be swapped into the element it made. Without this the preview
+  /// goes on showing the previous `<video>`, whose stream has just been
+  /// stopped, and freezes or goes black.
+  static void _showPreview(JSObject element) {
+    _previewElement = element;
+    _previewHost?.callMethod<JSAny?>('replaceChildren'.toJS, element);
+  }
+
   /// Takes a frame, scans it, and goes round again.
   ///
-  /// A timer rather than `requestAnimationFrame`: the page may be showing
-  /// nothing that animates, and scanning should not stop because of it.
+  /// The camera drives this where it can: a browser that has
+  /// `requestVideoFrameCallback` says when a new frame has been presented, so
+  /// no frame is scanned twice and none is scanned stale. Where it does not, a
+  /// timer stands in — a page may be showing nothing that animates, and
+  /// scanning should not stop because of it.
   void _startPump() {
-    _pump = Timer.periodic(const Duration(milliseconds: 33), (_) async {
-      if (_busy || !_scanning) return;
-      final camera = _camera, worker = _worker;
-      if (camera == null || worker == null) return;
-      _busy = true;
-      try {
-        final frame = camera.grab();
-        if (frame == null) return;
-        // 2 is WxScanPixelFormat's RGBA, which is what a canvas produces.
-        final document = await worker.scanPixelsJson(
-            frame.pixels, frame.width, frame.height, 2);
-        if (document != null && !_scans.isClosed) _scans.add(document);
-      } on Object catch (_) {
-        // A frame that fails is dropped; the next one is along in a moment.
-      } finally {
-        _busy = false;
-      }
-    });
+    _driven = _camera?.onFrame(_tick) ?? false;
+    if (_driven) return;
+    _pump = Timer.periodic(const Duration(milliseconds: 33), (_) => _tick());
+  }
+
+  void _driveNext() {
+    if (_driven) _camera?.onFrame(_tick);
+  }
+
+  void _tick() {
+    if (_busy) {
+      _driveNext();
+      return;
+    }
+    _busy = true;
+    unawaited(_scanOnce().whenComplete(() {
+      _busy = false;
+      _driveNext();
+    }));
+  }
+
+  Future<void> _scanOnce() async {
+    if (!_scanning) return;
+    final camera = _camera, worker = _worker;
+    if (camera == null || worker == null) return;
+    try {
+      final frame = camera.grab();
+      if (frame == null) return;
+      // 2 is WxScanPixelFormat's RGBA, which is what a canvas produces.
+      final document = await worker.scanPixelsJson(
+          frame.pixels, frame.width, frame.height, 2);
+      if (document != null && !_scans.isClosed) _scans.add(document);
+    } on Object catch (_) {
+      // A frame that fails is dropped; the next one is along in a moment.
+    }
   }
 
   @override
@@ -162,7 +198,11 @@ class WxScanWeb extends WxScanPlatform {
     _camera?.close();
     final camera = await WxCamera.open(shortSide);
     _camera = camera;
-    _previewElement = camera.video;
+    _showPreview(camera.video);
+    // The old camera's frame callback died with its track; where the pump is
+    // driven by them, the new one has to be asked. Asking twice is harmless:
+    // a camera holds at most one request open.
+    _driveNext();
     _sizes.add({
       'previewWidth': camera.width,
       'previewHeight': camera.height,
@@ -182,6 +222,15 @@ class WxScanWeb extends WxScanPlatform {
   @override
   Future<double> setZoom(double ratio) async =>
       await _camera?.setZoom(ratio) ?? 1;
+
+  /// A browser has no focus to point.
+  ///
+  /// `MediaStreamTrack.applyConstraints` names `pointsOfInterest`, but no
+  /// engine ships it, and where focus is adjustable at all it is
+  /// `focusDistance` — a distance, not a place in the picture. Saying so is
+  /// better than a call that quietly does nothing.
+  @override
+  Future<bool> focusAt(double x, double y) async => false;
 
   @override
   Future<Map<String, dynamic>?> zoomRange() async {
@@ -211,9 +260,11 @@ class WxScanWeb extends WxScanPlatform {
   Future<void> dispose() async {
     _pump?.cancel();
     _pump = null;
+    _driven = false;
     _camera?.close();
     _camera = null;
     _previewElement = null;
+    _previewHost?.callMethod<JSAny?>('replaceChildren'.toJS);
     await _worker?.dispose();
     _worker = null;
   }

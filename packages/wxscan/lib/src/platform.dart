@@ -43,6 +43,8 @@ abstract class WxScanPlatform {
 
   Future<double> setZoom(double ratio);
 
+  Future<bool> focusAt(double x, double y);
+
   Future<Map<String, dynamic>?> zoomRange();
 
   Future<Uint8List?> grabFrame();
@@ -105,6 +107,10 @@ class MethodChannelWxScan extends WxScanPlatform {
   @override
   Future<double> setZoom(double ratio) async =>
       (await _method.invokeMethod<double>('setZoom', {'ratio': ratio})) ?? 1.0;
+
+  @override
+  Future<bool> focusAt(double x, double y) async =>
+      (await _method.invokeMethod<bool>('focusAt', {'x': x, 'y': y})) ?? false;
 
   @override
   Future<Map<String, dynamic>?> zoomRange() =>

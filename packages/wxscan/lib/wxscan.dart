@@ -225,6 +225,25 @@ class WxScan {
   static Future<double> setZoom(double ratio) async =>
       _zoom = await _platform.setZoom(ratio);
 
+  /// Focuses and meters on one point of the picture.
+  ///
+  /// [x] and [y] are fractions of the preview, 0 to 1, in the coordinates of
+  /// the picture the texture holds — the space
+  /// [WxScanCameraInfo.previewWidth] and [WxScanCameraInfo.previewHeight]
+  /// describe, before any [WxPreviewSize.quarterTurns] the screen asks for.
+  /// A screen tap therefore has to be brought back through the same rotation
+  /// and cover-fit the preview was drawn with; `example/lib/scan_page.dart`
+  /// does exactly that.
+  ///
+  /// Exposure is metered on the same point, which is what a tap on a camera
+  /// means everywhere else. Both revert to their continuous modes after a few
+  /// seconds, so a scanner left alone goes on focusing by itself.
+  ///
+  /// Returns whether the device took it: false where the camera is closed, the
+  /// point is outside the picture, or the hardware has no focus to point —
+  /// a browser, and some front cameras.
+  static Future<bool> focusAt(double x, double y) => _platform.focusAt(x, y);
+
   /// The supported zoom range and the current value.
   static Future<({double min, double max, double current})> zoomRange() async {
     final m = await _platform.zoomRange();

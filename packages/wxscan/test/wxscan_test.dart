@@ -14,6 +14,7 @@ class _FakePlatform extends WxScanPlatform {
   bool? lastTorch;
   int? lastShortSide;
   double? lastZoom;
+  ({double x, double y})? lastFocus;
   var disposed = false;
 
   /// What setZoom pretends the device clamped to.
@@ -55,6 +56,12 @@ class _FakePlatform extends WxScanPlatform {
   Future<double> setZoom(double ratio) async {
     lastZoom = ratio;
     return clampZoomTo;
+  }
+
+  @override
+  Future<bool> focusAt(double x, double y) async {
+    lastFocus = (x: x, y: y);
+    return true;
   }
 
   @override
@@ -167,6 +174,13 @@ void main() {
     expect(size.width, 720);
     expect(size.displayRotation, 270);
     expect(size.quarterTurns, 1);
+  });
+
+  test('a focus point goes to the platform as it was given', () async {
+    await WxScan.initialize();
+
+    expect(await WxScan.focusAt(0.25, 0.75), isTrue);
+    expect(fake.lastFocus, (x: 0.25, y: 0.75));
   });
 
   test('dispose clears the readable state', () async {

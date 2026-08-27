@@ -14,6 +14,8 @@ import android.content.res.Configuration
 import android.view.OrientationEventListener
 import android.view.Surface
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
+import androidx.camera.core.SurfaceOrientedMeteringPointFactory
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
@@ -138,6 +140,17 @@ class WxScanPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
     private var scanSink: EventChannel.EventSink? = null
     private var textureEntry: TextureRegistry.SurfaceTextureEntry? = null
+
+    /**
+     * Set between the start of a bind and the camera provider answering, both
+     * on the main thread.
+     *
+     * A second initialisation in that window would build a second
+     * SurfaceTexture over the top of the first, leaving it registered with
+     * nothing drawing into it — and a page that is entered and left repeatedly
+     * does exactly that.
+     */
+    private var starting = false
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var previewSurface: Surface? = null
@@ -164,6 +177,13 @@ class WxScanPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     // device's natural orientation, and therefore constant.
     @Volatile private var previewW = ANALYSIS_HEIGHT
     @Volatile private var previewH = ANALYSIS_WIDTH
+
+    /**
+     * How far the camera turned the buffer to bring the texture upright, the
+     * sensor's own mounting angle. Kept because focus points arrive in the
+     * upright picture's coordinates and metering wants the buffer's.
+     */
+    @Volatile private var previewRotation = 90
     private var orientationListener: OrientationEventListener? = null
     private var configCallback: ComponentCallbacks? = null
     private var lastTargetRotation = Surface.ROTATION_0
@@ -290,6 +310,14 @@ class WxScanPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     result.error("ZOOM_ERROR", e.message, null)
                 }
             }
+            // Tap to focus. The point is a fraction of the upright picture,
+            // which is the buffer turned by the sensor's mounting angle, so it
+            // is turned back before metering.
+            "focusAt" -> {
+                val x = call.argument<Double>("x") ?: -1.0
+                val y = call.argument<Double>("y") ?: -1.0
+                result.success(focusAt(x, y))
+            }
             "zoomRange" -> {
                 val state = camera?.cameraInfo?.zoomState?.value
                 result.success(
@@ -365,37 +393,60 @@ class WxScanPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         main.post { bindCamera(result) }
     }
 
+    private fun infoMap(textureId: Long): Map<String, Any> = mapOf(
+        "textureId" to textureId,
+        "previewWidth" to previewW,
+        "previewHeight" to previewH,
+        "displayRotation" to displayRotationDegrees,
+        "nativeReady" to nativeReady,
+        "modelsLoaded" to modelsLoaded
+    )
+
     private fun bindCamera(result: MethodChannel.Result) {
+        // Already bound: hand Dart the current state, which is what a hot
+        // reload or a re-entered page needs. Binding again would build a
+        // second SurfaceTexture and drop the first without releasing it.
+        val bound = textureEntry
+        if (bound != null && cameraProvider != null) {
+            result.success(infoMap(bound.id()))
+            return
+        }
+        if (starting) {
+            result.error("BUSY", "the camera is already starting", null)
+            return
+        }
+        starting = true
         try {
             lifecycleRegistry.currentState = Lifecycle.State.RESUMED
+            // A bind that failed part way leaves its entry behind, and the
+            // registry holds it until someone says otherwise.
+            textureEntry?.let { try { it.release() } catch (_: Throwable) {} }
             val entry = textureRegistry.createSurfaceTexture()
             textureEntry = entry
             val st: SurfaceTexture = entry.surfaceTexture()
 
             val future = ProcessCameraProvider.getInstance(appContext)
             future.addListener({
+                // The page can be left again while the provider is being
+                // fetched. Teardown clears this and has released the entry, so
+                // there is nothing left to bind to.
+                if (!starting) {
+                    result.error("CANCELLED", "the camera was disposed while starting", null)
+                    return@addListener
+                }
                 try {
                     val provider = future.get()
                     cameraProvider = provider
                     bindUseCases(st)
-
-                    main.post {
-                        result.success(
-                            mapOf(
-                                "textureId" to entry.id(),
-                                "previewWidth" to previewW,
-                                "previewHeight" to previewH,
-                                "displayRotation" to displayRotationDegrees,
-                                "nativeReady" to nativeReady,
-                                "modelsLoaded" to modelsLoaded
-                            )
-                        )
-                    }
+                    starting = false
+                    main.post { result.success(infoMap(entry.id())) }
                 } catch (e: Throwable) {
+                    starting = false
                     result.error("INIT_ERROR", e.message, null)
                 }
             }, ContextCompat.getMainExecutor(appContext))
         } catch (e: Throwable) {
+            starting = false
             result.error("INIT_ERROR", e.message, null)
         }
     }
@@ -629,11 +680,51 @@ class WxScanPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         )
         previewW = w
         previewH = h
+        previewRotation = rot
         pushPreviewSize()
     }
 
     private fun pushPreviewSize() {
         sizeHandler.sink?.success(previewSizeMap())
+    }
+
+    /**
+     * Focuses and meters on one point of the upright picture, given as
+     * fractions of its width and height.
+     *
+     * [SurfaceOrientedMeteringPointFactory] works in the coordinates of the
+     * buffer the camera writes, which is the picture in the texture turned
+     * *back* by [previewRotation] — the angle the camera turned it by to bring
+     * it upright. Rotating a point clockwise by 90 sends (x, y) to (1 - y, x),
+     * so undoing it sends (x, y) to (y, 1 - x), and so on round.
+     *
+     * The action is left to cancel itself: CameraX returns to continuous
+     * auto-focus a few seconds later, which is what a scanner wants when the
+     * reader has moved on and is not tapping any more.
+     */
+    private fun focusAt(x: Double, y: Double): Boolean {
+        if (x < 0.0 || x > 1.0 || y < 0.0 || y > 1.0) return false
+        val cam = camera ?: return false
+        val (bx, by) = when (previewRotation) {
+            90 -> y to (1 - x)
+            180 -> (1 - x) to (1 - y)
+            270 -> (1 - y) to x
+            else -> x to y
+        }
+        return try {
+            val point = SurfaceOrientedMeteringPointFactory(1f, 1f)
+                .createPoint(bx.toFloat(), by.toFloat())
+            val action = FocusMeteringAction.Builder(
+                point,
+                FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE
+            ).build()
+            if (!cam.cameraInfo.isFocusMeteringSupported(action)) return false
+            cam.cameraControl.startFocusAndMetering(action)
+            true
+        } catch (e: Throwable) {
+            android.util.Log.w(TAG, "focusAt err: ${e.message}")
+            false
+        }
     }
 
     private fun previewSizeMap(): Map<String, Any> = mapOf(
@@ -776,6 +867,9 @@ class WxScanPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     }
 
     private fun teardown() {
+        // Before anything is released, so a bind still in flight sees it and
+        // does not attach the camera to a texture that is about to go.
+        starting = false
         orientationListener?.disable()
         orientationListener = null
         @Suppress("DEPRECATION")

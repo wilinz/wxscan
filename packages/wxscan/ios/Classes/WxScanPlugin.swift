@@ -72,6 +72,10 @@ public class WxScanPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     private let videoOutput = AVCaptureVideoDataOutput()
     private var device: AVCaptureDevice?
 
+    /// Counts taps, so that only the newest one's timer restores continuous
+    /// focus. Touched on the main thread only.
+    private var focusGeneration: UInt64 = 0
+
     /// Camera callback queue: copies the pixels and dispatches, nothing else.
 /// Scanning never runs here.
     private let sessionQueue = DispatchQueue(label: "com.wilinz.wxscan.session", qos: .userInitiated)
@@ -89,7 +93,19 @@ public class WxScanPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     /// Whether the CNN models loaded. Without them decoding still works, but
     /// small or distant symbols are detected far less reliably.
     private var modelsLoaded = false
+    /// Whether a preview texture exists and a session is meant to be running.
+    ///
+    /// Main-thread state, and it has to move with the texture rather than with
+    /// the capture session: `stopRunning` and `startRunning` happen later on
+    /// `sessionQueue`, and a caller that leaves the page and comes straight
+    /// back must not be told the texture it just lost is still good.
     private var started = false
+
+    /// Set between the start of setup and the texture being registered, both
+    /// on the main thread. Two initialisations in that window would each build
+    /// a session and register a texture, leaving the first registered and
+    /// nothing drawing into it.
+    private var starting = false
 
     /// The sensor's own size, landscape, so w > h.
     private var nativeW = 0
@@ -162,7 +178,10 @@ public class WxScanPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             let want = (call.arguments as? [String: Any])?["shortSide"] as? Int ?? 720
             sessionQueue.async {
                 self.shortSide = want
-                if self.started {
+                // `started` belongs to the main thread now; what this needs to
+                // know is whether there is a configured session here to change,
+                // which is this queue's own business.
+                if self.session.isRunning {
                     self.applyResolution()
                     let (w, h) = self.currentPreviewSize()
                     self.sizeStream.push(width: w, height: h)
@@ -183,6 +202,11 @@ public class WxScanPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         case "setZoom":
             let want = (call.arguments as? [String: Any])?["ratio"] as? Double ?? 1.0
             result(setZoom(want))
+        case "focusAt":
+            let args = call.arguments as? [String: Any]
+            let x = args?["x"] as? Double ?? -1
+            let y = args?["y"] as? Double ?? -1
+            result(focusAt(x: x, y: y))
         case "zoomRange":
             result(zoomRange())
         case "selfTestNative":
@@ -213,6 +237,15 @@ public class WxScanPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             result(infoMap(width: w, height: h))
             return
         }
+        if starting {
+            result(FlutterError(
+                code: "BUSY",
+                message: "the camera is already starting",
+                details: nil
+            ))
+            return
+        }
+        starting = true
 
         sessionQueue.async {
             do {
@@ -223,15 +256,42 @@ public class WxScanPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                 self.applyResolution()
             } catch {
                 DispatchQueue.main.async {
+                    self.starting = false
                     result(FlutterError(code: "INIT_ERROR", message: error.localizedDescription, details: nil))
                 }
                 return
             }
 
             DispatchQueue.main.async {
+                // The page can be left again while the session is being built.
+                // Teardown clears this, and there is then nothing to attach a
+                // texture to.
+                guard self.starting else {
+                    result(FlutterError(
+                        code: "CANCELLED",
+                        message: "the camera was disposed while starting",
+                        details: nil
+                    ))
+                    return
+                }
                 let tex = WxScanTexture()
                 self.texture = tex
                 self.textureId = self.textureRegistry?.register(tex) ?? -1
+                guard self.textureId >= 0 else {
+                    self.texture = nil
+                    self.starting = false
+                    result(FlutterError(
+                        code: "NO_TEXTURE",
+                        message: "the texture registry refused a texture",
+                        details: nil
+                    ))
+                    return
+                }
+                // Both flags move here, with the texture they describe, and
+                // before the result goes back: what Dart is handed and what a
+                // second call sees have to agree.
+                self.started = true
+                self.starting = false
 
                 UIDevice.current.beginGeneratingDeviceOrientationNotifications()
                 NotificationCenter.default.addObserver(
@@ -240,10 +300,7 @@ public class WxScanPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                 )
                 self.applyOrientation()
 
-                self.sessionQueue.async {
-                    self.session.startRunning()
-                    self.started = true
-                }
+                self.sessionQueue.async { self.session.startRunning() }
 
                 let (w, h) = self.currentPreviewSize()
                 self.sizeStream.push(width: w, height: h)
@@ -351,18 +408,26 @@ public class WxScanPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     /// frame is what the screen shows, so the scan coordinates and the preview
     /// share one frame of reference for free and Rust has nothing to rotate
     /// (it is passed a rotation of 0).
+    /// How far the connection turns the buffer to bring the picture upright.
+    ///
+    /// Shared with [focusAt], which has to turn a point back the other way:
+    /// focusPointOfInterest is in the buffer's own coordinates and knows
+    /// nothing of the rotation applied downstream of it.
+    private func uprightRotation() -> CGFloat {
+        switch interfaceOrientation() {
+        case .portrait: return 90
+        case .portraitUpsideDown: return 270
+        case .landscapeLeft: return 180
+        case .landscapeRight: return 0
+        default: return 90
+        }
+    }
+
     private func applyOrientation() {
         guard let conn = videoOutput.connection(with: .video) else { return }
         let o = interfaceOrientation()
         if #available(iOS 17.0, *) {
-            let angle: CGFloat
-            switch o {
-            case .portrait: angle = 90
-            case .portraitUpsideDown: angle = 270
-            case .landscapeLeft: angle = 180
-            case .landscapeRight: angle = 0
-            default: angle = 90
-            }
+            let angle = uprightRotation()
             if conn.isVideoRotationAngleSupported(angle), conn.videoRotationAngle != angle {
                 conn.videoRotationAngle = angle
             }
@@ -544,6 +609,74 @@ public class WxScanPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         }
     }
 
+    /// Focuses and meters on one point of the upright picture, given as
+    /// fractions of its width and height.
+    ///
+    /// `focusPointOfInterest` is in the coordinates of the buffer the camera
+    /// writes. The connection turns that buffer *clockwise* by
+    /// [uprightRotation] to stand the picture up, so a point comes back the
+    /// other way: undoing 90 sends (x, y) to (y, 1 - x), and round from there.
+    /// Turning it the wrong way lands on the diagonally opposite point, which
+    /// is what the first attempt here did — the two 90s are not symmetric and
+    /// only a device settles which is which.
+    ///
+    /// Exposure follows the same point, which is what a tap on a camera means
+    /// everywhere. Both are left in their auto — not continuous — modes, and
+    /// [restoreContinuousFocus] puts them back a few seconds later, so a
+    /// scanner nobody is tapping goes on focusing by itself.
+    private func focusAt(x: Double, y: Double) -> Bool {
+        guard x >= 0, x <= 1, y >= 0, y <= 1, let dev = device else { return false }
+        let canFocus = dev.isFocusPointOfInterestSupported && dev.isFocusModeSupported(.autoFocus)
+        let canExpose = dev.isExposurePointOfInterestSupported
+            && dev.isExposureModeSupported(.autoExpose)
+        if !canFocus && !canExpose { return false }
+
+        let p: CGPoint
+        switch Int(uprightRotation()) {
+        case 90: p = CGPoint(x: y, y: 1 - x)
+        case 180: p = CGPoint(x: 1 - x, y: 1 - y)
+        case 270: p = CGPoint(x: 1 - y, y: x)
+        default: p = CGPoint(x: x, y: y)
+        }
+
+        do {
+            try dev.lockForConfiguration()
+            if canFocus {
+                dev.focusPointOfInterest = p
+                dev.focusMode = .autoFocus
+            }
+            if canExpose {
+                dev.exposurePointOfInterest = p
+                dev.exposureMode = .autoExpose
+            }
+            dev.unlockForConfiguration()
+        } catch {
+            return false
+        }
+        restoreContinuousFocus()
+        return true
+    }
+
+    /// Hands the camera back to itself once the tap has had its moment.
+    ///
+    /// Only the last tap's timer does anything: an earlier one firing would
+    /// cut short the focus the reader just asked for.
+    private func restoreContinuousFocus() {
+        focusGeneration &+= 1
+        let mine = focusGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, self.focusGeneration == mine, let dev = self.device else { return }
+            guard (try? dev.lockForConfiguration()) != nil else { return }
+            if dev.isFocusModeSupported(.continuousAutoFocus) {
+                dev.focusMode = .continuousAutoFocus
+            }
+            if dev.isExposureModeSupported(.continuousAutoExposure) {
+                dev.exposureMode = .continuousAutoExposure
+            }
+            dev.unlockForConfiguration()
+        }
+    }
+
     private func zoomRange() -> [String: Double] {
         guard let dev = device else { return ["min": 1, "max": 1, "current": 1] }
         return [
@@ -622,6 +755,13 @@ public class WxScanPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
         UIDevice.current.endGeneratingDeviceOrientationNotifications()
 
+        // With the texture, on the main thread: leaving this to the block
+        // below meant a page re-entered before `stopRunning` had returned took
+        // the "already running" path and was handed the texture id -1 that
+        // this line had just written, which draws nothing and starts nothing.
+        started = false
+        starting = false
+
         let tid = textureId
         textureId = -1
         if tid >= 0 { textureRegistry?.unregisterTexture(tid) }
@@ -634,7 +774,6 @@ public class WxScanPlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             for o in self.session.outputs { self.session.removeOutput(o) }
             self.session.commitConfiguration()
             self.device = nil
-            self.started = false
             self.busy = false
             self.lastFrameLock.lock()
             self.lastY = nil; self.lastUV = nil

@@ -28,6 +28,14 @@ const wxScanPreviewViewType = 'wxscan/preview';
 ///   child: WxScanPreview(info: info),
 /// )
 /// ```
+///
+/// This is the image and nothing else. Everything a scanning screen puts over
+/// it — the viewfinder, the corners drawn on each decoded code, picking among
+/// several in one frame, and the cover-fit mapping that takes frame
+/// coordinates to screen coordinates so that drawing and tapping agree — is an
+/// application's to write, and `example/lib/scan_page.dart` in this package is
+/// a complete one to read or copy. It is also what the
+/// [live demo](https://wilinz.github.io/wxscan/) is running.
 class WxScanPreview extends StatelessWidget {
   const WxScanPreview({super.key, required this.info});
 
