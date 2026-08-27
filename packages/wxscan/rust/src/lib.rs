@@ -21,6 +21,11 @@ mod jni_shim;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 mod apple_decoder;
 
+// Built for the tests on every platform, not only for Android: it is pure Rust,
+// and a decoder that can only be exercised on a phone would not be exercised.
+#[cfg(any(target_os = "android", test))]
+mod heic_decoder;
+
 /// Lend this library the platform's own image decoder, if there is one.
 ///
 /// Calling this is what makes `scanImage` read HEIC and everything else the
@@ -34,10 +39,32 @@ mod apple_decoder;
 #[no_mangle]
 pub extern "C" fn wxscan_install_platform_image_decoder() {
     #[cfg(any(target_os = "ios", target_os = "macos"))]
-    {
-        let decoder = apple_decoder::decoder();
+    let decoder = Some(apple_decoder::decoder());
+    #[cfg(target_os = "android")]
+    let decoder = Some(heic_decoder::decoder());
+    #[cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android")))]
+    let decoder: Option<wxscan_ffi::WxScanImageDecoder> = None;
+
+    if let Some(decoder) = decoder {
         // SAFETY: the pointers are to functions in this library, which outlive
         // any registration of them.
         unsafe { wxscan_ffi::wxscan_set_image_decoder(&decoder) };
     }
+}
+
+/// Serialising the tests that install an image decoder.
+///
+/// The registration is one global slot in wxscan-ffi, and `cargo test` runs
+/// tests in parallel, so two modules installing their own decoder would each
+/// see the other's. Every such test takes this first, and starts from nothing
+/// installed whatever the test before it did.
+#[cfg(test)]
+pub(crate) fn exclusively() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // A failing test poisons the lock; that is no reason for the rest to fail
+    // too, so the poison is stepped over.
+    let guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // SAFETY: clearing the registration is always sound.
+    unsafe { wxscan_ffi::wxscan_set_image_decoder(std::ptr::null()) };
+    guard
 }

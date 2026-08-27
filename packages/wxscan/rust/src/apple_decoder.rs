@@ -332,6 +332,7 @@ mod tests {
     /// the "before" half would see whatever the other had done.
     #[test]
     fn the_platform_reads_a_heic_the_built_in_decoders_cannot() {
+        let _serial = crate::exclusively();
         let data = std::fs::read(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/tests/data/upright.heic"
