@@ -3,6 +3,9 @@ name = "wxscan_core"
 version = "0.1.0"
 edition = "2021"
 publish = false
+# Not published, but stated: cargo-deny checks that every crate it can see has
+# a licence, and a crate with none is exactly the hole this is here to close.
+license = "Apache-2.0"
 build = "build.rs"
 
 [lib]

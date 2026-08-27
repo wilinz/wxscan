@@ -1,0 +1,43 @@
+# What the native library is allowed to link.
+#
+# This package's Rust crate is where the platform decoders live, which is
+# exactly where a tempting codec with an awkward licence turns up — and one did.
+# An HEIC decoder went in that was AGPL-3.0-or-commercial: it compiled, passed
+# its tests, was faster than the alternative, and would have put every
+# application shipping wxscan under the AGPL. Nothing about a licence shows at
+# build time or run time, so it is checked here.
+#
+# On pull requests as well as pushes: the point is to fail before a dependency
+# lands, not after.
+name: licences
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: wxscan }
+
+      # The crate's manifest points at these as siblings of the repository, the
+      # same layout a developer has. Without them cargo cannot resolve, and a
+      # check that cannot resolve reports nothing rather than failing.
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/wxscan-rs, path: wxscan-rs }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/cvlite, path: cvlite }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/wxing, path: wxing }
+
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: wxscan/packages/wxscan/rust/Cargo.toml
+          command: check licenses

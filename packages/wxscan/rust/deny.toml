@@ -1,0 +1,55 @@
+# What this package's native library is allowed to link, checked in CI.
+#
+# This exists because of a real miss, and it happened here: an HEIC decoder went
+# in that was AGPL-3.0-or-commercial. It compiled, it passed its tests, it was
+# faster than the alternative, and it would have put every application shipping
+# wxscan under the AGPL. Nothing about a licence shows up at build time or at
+# run time, so it is the one property of a dependency that has to be checked
+# mechanically.
+#
+# This crate pulls in the platform decoders, which is exactly where a tempting
+# codec with an awkward licence turns up.
+#
+#   cargo deny check licenses
+#
+# Adding a dependency whose licence is not below is meant to fail. Read the
+# licence, decide, and either add it here with a reason or find another crate.
+
+[licenses]
+version = 2
+# Permissive, and compatible with this library's Apache-2.0. No copyleft:
+# GPL and AGPL are the ones that would follow the library into its users, and
+# LGPL's relinking requirement is not deliverable through a static library on
+# iOS.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Zlib",
+    "Unlicense",
+    "0BSD",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.9
+
+# cbindgen generates wxscan-ffi's C header and never reaches a binary — it is a
+# build dependency of a dependency. MPL-2.0 is per-file copyleft and would be
+# tolerable even if it did link, but the narrow exception says why it is here
+# rather than leaving MPL allowed for everything.
+[[licenses.exceptions]]
+name = "cbindgen"
+allow = ["MPL-2.0"]
+
+[bans]
+multiple-versions = "allow"
+
+[advisories]
+# Unmaintained crates are a judgement call rather than a build failure; a
+# vulnerability is not.
+yanked = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "allow"
