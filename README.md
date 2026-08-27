@@ -5,12 +5,12 @@ QR scanning for Flutter that reads the codes other scanners give up on: the
 decoder — ported to Rust. No OpenCV, and no native build files to maintain.
 
 ```sh
-flutter pub add wxscan          # live camera scanning
-flutter pub add wxscan_core     # decoding images and pixel buffers, no camera
+flutter pub add wxscan          # decoding images and pixel buffers, no camera
+flutter pub add wxscan_live     # live camera scanning, on top of it
 ```
 
 Then follow the quick start in [wxscan](packages/wxscan/README.md) or
-[wxscan_core](packages/wxscan_core/README.md) — install, weights, permissions
+[wxscan_live](packages/wxscan_live/README.md) — install, weights, permissions
 and a first scan on one screen. The rest of this file is about the repository.
 
 **[Live demo](https://wilinz.github.io/wxscan/)** — the example application in a
@@ -21,8 +21,8 @@ the page, and the camera is asked for only if you go looking for it.
 The packages give you the camera image and the result of each frame. The screen
 around them — viewfinder, the corners drawn over each code, picking among
 several at once — is
-[`packages/wxscan/example`](packages/wxscan/example/lib/scan_page.dart), which
-is there to be read and copied.
+[`packages/wxscan_live/example`](packages/wxscan_live/example/lib/scan_page.dart),
+which is there to be read and copied.
 
 ## Why this one
 
@@ -49,19 +49,19 @@ TFLite library, so `dart test` runs the scanner with no Flutter involved at all.
 
 | Package | What it is |
 |---|---|
-| [`packages/wxscan`](packages/wxscan) | Live scanning. Camera frames go from CameraX or AVFoundation straight into the scanner without passing through Dart; the preview is a Flutter texture. |
-| [`packages/wxscan_core`](packages/wxscan_core) | The decoding core. A C ABI that Dart opens through FFI for images and pixel buffers. A plain Dart package: its build hook builds and bundles the native library, so it works under `dart run` and `dart test` too. |
-| [`packages/wxscan/example`](packages/wxscan/example) | Demo app: live scanning, decoding from the photo library, and picking among several codes in one frame. |
+| [`packages/wxscan`](packages/wxscan) | The scanner. A C ABI that Dart opens through FFI for images and pixel buffers. A plain Dart package: its build hook builds and bundles the native library, so it works under `dart run` and `dart test` too. |
+| [`packages/wxscan_live`](packages/wxscan_live) | The camera in front of it. Frames go from CameraX or AVFoundation straight into the scanner without passing through Dart; the preview is a Flutter texture. |
+| [`packages/wxscan_live/example`](packages/wxscan_live/example) | Demo app: live scanning, decoding from the photo library, and picking among several codes in one frame. |
 
 ## Platforms
 
-| | Live scanning (`wxscan`) | Decoding (`wxscan_core`) |
+| | Decoding (`wxscan`) | Live scanning (`wxscan_live`) |
 |---|---|---|
-| Android | CameraX, API 24+ | arm64-v8a, armeabi-v7a, x86_64 |
-| iOS | AVFoundation, 13.0+ | 13.0+ |
-| macOS | AVFoundation, 10.15+ | 10.15+, arm64 |
-| Linux, Windows | — | x86_64, and arm64 on Linux |
-| Dart, no Flutter | — | `dart run` and `dart test` |
+| Android | arm64-v8a, armeabi-v7a, x86_64 | CameraX, API 24+ |
+| iOS | 13.0+ | AVFoundation, 13.0+ |
+| macOS | 10.15+, arm64 | AVFoundation, 10.15+ |
+| Linux, Windows | x86_64, and arm64 on Linux | — |
+| Dart, no Flutter | `dart run` and `dart test` | — |
 
 32-bit x86 Android is not supported: LiteRT publishes no build for it, so an
 application targeting that ABI has to exclude it.
@@ -89,20 +89,21 @@ Documents/
 └── wxscan-rs/    cvlite, wxing, wxscan, wxscan-ffi — the algorithm
 ```
 
-One place builds the native library: `hook/build.dart` in `packages/wxscan_core`
+One place builds the native library: `hook/build.dart` in `packages/wxscan`
 compiles the Rust crate in `rust/`, downloads the TFLite C library, and declares
-both as code assets for Flutter to bundle. `wxscan` then calls that same library
-from Swift and Kotlin, resolving its entry points at run time — on Android from
+both as code assets for Flutter to bundle. `wxscan_live` then calls that same
+library from Swift and Kotlin, resolving its entry points at run time — on
+Android from
 `lib/<abi>/` where `System.loadLibrary` already looks, on Apple platforms with
 `dlsym`. So an application carries one copy of the scanner and one of TFLite
 however many of the two packages it uses. The details, including how to move the
 TFLite version, are in
-[wxscan_core's README](packages/wxscan_core/README.md#the-build-hook).
+[wxscan's README](packages/wxscan/README.md#the-build-hook).
 
 ## Building the demo
 
 ```sh
-cd packages/wxscan/example
+cd packages/wxscan_live/example
 flutter run              # -d macos, an attached device, ...
 ```
 

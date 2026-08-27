@@ -4,8 +4,9 @@ QR decoding for Flutter, backed by a Rust port of the `wechat_qrcode` algorithm:
 CNN-based detection, super resolution, and decoding.
 
 This package decodes images and raw pixel buffers. It does not open a camera —
-for live scanning use [`wxscan`](https://pub.dev/packages/wxscan), which drives
-the camera natively and builds the same Rust crate for its own link step.
+for live scanning use
+[`wxscan_live`](https://pub.dev/packages/wxscan_live), which drives the camera
+natively and calls this package's native library from Swift and Kotlin.
 
 It is a plain Dart package, not a Flutter plugin: the native library is built
 and bundled by a [build hook](https://dart.dev/tools/hooks), so it works under

@@ -7,8 +7,8 @@ import 'package:publish_kit/publish_kit.dart';
 const _commands = {
   'check': 'Report anything that would block a release. Changes nothing.',
   'update-version': 'Propagate each version.txt into its manifests.',
-  'release-deps': 'Point wxscan_core/rust at crates.io instead of the sibling checkout.',
-  'restore-dev': 'Point wxscan_core/rust back at the sibling checkout.',
+  'release-deps': 'Point wxscan/rust at crates.io instead of the sibling checkout.',
+  'restore-dev': 'Point wxscan/rust back at the sibling checkout.',
   'publish': 'Publish everything not already up, in dependency order.',
 };
 

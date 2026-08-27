@@ -1,5 +1,5 @@
 name: wxscan_example
-description: "Demo for the wxscan plugin: live scanning, image decoding, and the multi-code picker."
+description: "Demo for the wxscan_live plugin: live scanning, image decoding, and the multi-code picker."
 publish_to: 'none'
 version: 1.0.0+1
 

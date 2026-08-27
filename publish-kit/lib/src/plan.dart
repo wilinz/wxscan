@@ -28,7 +28,7 @@ enum Repo {
   cvlite('cvlite', 'General-purpose OpenCV imgproc functions'),
   wxing('wxing', 'General-purpose QR decoding, the ZXing fork'),
   rust('wxscan-rs', 'The WeChat algorithm: wxscan, -tflite, -ffi'),
-  dart('wxscan', 'The Flutter plugin: wxscan_core, wxscan');
+  dart('wxscan', 'The Dart side: wxscan, wxscan_live');
 
   const Repo(this.dirName, this.summary);
 
@@ -107,22 +107,28 @@ const List<Target> releasePlan = [
     deps: ['cvlite', 'wxscan'],
   ),
   // ---- pub.dev ---------------------------------------------------------
-  // wxscan_core's build hook compiles packages/wxscan_core/rust, which depends
-  // on wxscan-ffi and wxscan and transitively on cvlite and wxing. Until all
-  // four are on crates.io the hook only builds on a machine that happens to
-  // have every sibling checkout, which is why the crates all come first.
-  Target(
-    name: 'wxscan_core',
-    registry: Registry.pub,
-    repo: Repo.dart,
-    dir: 'packages/wxscan_core',
-    deps: ['wxscan-ffi'],
-  ),
+  // The pub package `wxscan` and the crate `wxscan` are different things
+  // sharing a name — one is the scanner as Dart sees it, the other as cargo
+  // does — and [registry] is what tells them apart. Nothing here resolves a
+  // dependency by name, so the two can coexist.
+  //
+  // wxscan's build hook compiles packages/wxscan/rust, which depends on
+  // wxscan-ffi and the wxscan crate and transitively on cvlite and wxing.
+  // Until all four are on crates.io the hook only builds on a machine that
+  // happens to have every sibling checkout, which is why the crates all come
+  // first.
   Target(
     name: 'wxscan',
     registry: Registry.pub,
     repo: Repo.dart,
     dir: 'packages/wxscan',
-    deps: ['wxscan_core'],
+    deps: ['wxscan-ffi'],
+  ),
+  Target(
+    name: 'wxscan_live',
+    registry: Registry.pub,
+    repo: Repo.dart,
+    dir: 'packages/wxscan_live',
+    deps: ['wxscan'],
   ),
 ];

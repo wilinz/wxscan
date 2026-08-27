@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/wxscan/example
+        working-directory: packages/wxscan_live/example
     steps:
       - uses: actions/checkout@v4
 
@@ -53,7 +53,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: packages/wxscan/example/build/web
+          path: packages/wxscan_live/example/build/web
 
   deploy:
     needs: build

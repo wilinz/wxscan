@@ -142,7 +142,7 @@ class Manifests {
     await _write(file, editor.toString(), '$packageDir: version -> $version');
   }
 
-  /// Points `wxscan`'s constraint on `wxscan_core` at [version].
+  /// Points `wxscan_live`'s constraint on `wxscan` at [version].
   Future<void> setPubDependency(
     String packageDir,
     String dependency,
@@ -160,7 +160,7 @@ class Manifests {
 
   /// Replaces one dependency line in a Cargo manifest.
   ///
-  /// This is the edit the whole release hinges on. `wxscan_core/rust` depends
+  /// This is the edit the whole release hinges on. `wxscan/rust` depends
   /// on `wxscan-ffi` and `wxscan` by a path into a sibling `wxscan-rs`
   /// checkout, which nobody installing from pub.dev has; leaving it that way
   /// ships a package whose build hook cannot build. Switching it to a version

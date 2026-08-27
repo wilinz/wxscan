@@ -1,4 +1,4 @@
-# wxscan
+# wxscan_live
 
 Live QR scanning for Flutter, backed by a Rust port of the `wechat_qrcode`
 algorithm: CNN-based detection, super resolution, and decoding.
@@ -20,7 +20,7 @@ decoding a picture never needs one.
 ## Quick start
 
 ```sh
-flutter pub add wxscan
+flutter pub add wxscan_live
 ```
 
 **1. The weights.** They are not bundled. Download `detect.tflite` and
@@ -93,7 +93,7 @@ Call `WxScan.dispose()` when leaving the screen. `setScanning(false)` pauses
 decoding while leaving the camera and preview running, which is what you want
 while a result sheet is up.
 
-[`packages/wxscan/example`](example) is a working application doing all of the
+[`packages/wxscan_live/example`](example) is a working application doing all of the
 above, plus torch, zoom, decoding from the photo library and picking among
 several codes in one frame.
 
@@ -169,8 +169,8 @@ differs:
 
 Nothing native is built here. The scanner comes from
 [`wxscan`](https://pub.dev/packages/wxscan), whose build hook produces
-it as a Dart code asset; this package is a dependency of that one, so an
-application that uses either gets exactly one copy.
+it as a Dart code asset. This package depends on that one, so an application
+using either gets exactly one copy.
 
 The Swift and Kotlin code calls the scanner's C ABI directly, because camera
 frames never pass through Dart. A code asset is loaded by the Dart runtime

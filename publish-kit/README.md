@@ -47,7 +47,7 @@ Split along what each piece is *for*, not along what artifact it produces:
 | `cvlite` | OpenCV imgproc port, zero dependencies | no |
 | `wxing` | the ZXing fork, QR decoding | no |
 | `wxscan-rs` | `wxscan`, `-tflite`, `-ffi` | yes |
-| `wxscan` | `wxscan_core`, `wxscan` (Dart) | yes |
+| `wxscan` | `wxscan`, `wxscan_live` (Dart) | yes |
 
 The three crates in `wxscan-rs` are three facets of one thing — the backend,
 the orchestration, the C ABI — and have to ship at one version, so they stay in
@@ -64,11 +64,11 @@ directory; the kit finds that parent by walking up from wherever it is run.
 ```
 crate:cvlite → crate:wxing → crate:wxscan-tflite
              → crate:wxscan → crate:wxscan-ffi
-             → pub:wxscan_core → pub:wxscan
+             → pub:wxscan → pub:wxscan_live
 ```
 
-This is not a preference. `packages/wxscan_core/rust` depends on `wxscan-ffi`
-and `wxscan`, and transitively on `cvlite` and `wxing`. Nobody installing from
+This is not a preference. `packages/wxscan/rust` depends on `wxscan-ffi` and
+the `wxscan` crate, and transitively on `cvlite` and `wxing`. Nobody installing from
 pub.dev has those checkouts, so the build hook cannot build until all five
 crates are on crates.io and the dependencies are versions instead of paths.
 
@@ -94,9 +94,9 @@ cd publish-kit && dart pub get
 
 dart run publish_kit check           # report blockers, change nothing
 dart run publish_kit update-version  # version.txt -> manifests
-dart run publish_kit release-deps    # wxscan_core/rust -> crates.io versions
+dart run publish_kit release-deps    # wxscan/rust -> crates.io versions
 dart run publish_kit publish         # everything not already up, in order
-dart run publish_kit restore-dev     # wxscan_core/rust -> path dependencies
+dart run publish_kit restore-dev     # wxscan/rust -> path dependencies
 ```
 
 Add `--dry-run` to any of them. `--allow-dirty` is needed for cargo until
@@ -126,8 +126,8 @@ changes stopped taking effect.
 
 ## Deliberately not handled
 
-- **`dependency_overrides` in `packages/wxscan/pubspec.yaml`** is left in place.
-  It points `wxscan_core` back at this checkout for development. Consumers
+- **`dependency_overrides` in `packages/wxscan_live/pubspec.yaml`** is left in
+  place. It points `wxscan` back at this checkout for development. Consumers
   ignore overrides entirely, so publishing with it costs one pub hint and
   nothing else — cheaper than a toggle that has to strip and restore a commented
   block on every release.

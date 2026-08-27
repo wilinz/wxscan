@@ -43,7 +43,7 @@ class PublishKit {
   /// The Rust crate inside the Dart package — the one manifest that names
   /// every other repository, and the reason the release order is what it is.
   String get _coreRustManifest =>
-      p.join(rootOf(Repo.dart), 'packages/wxscan_core/rust/Cargo.toml');
+      p.join(rootOf(Repo.dart), 'packages/wxscan/rust/Cargo.toml');
 
   /// Relative path from [_coreRustManifest] up to the shared parent.
   String get _coreToWorkspace =>
@@ -83,11 +83,11 @@ class PublishKit {
     for (final dep in ['wxscan-ffi', 'wxscan']) {
       final line = await _manifests.readCargoDependency(_coreRustManifest, dep);
       if (line == null) {
-        fail('$dep not found in wxscan_core/rust/Cargo.toml');
+        fail('$dep not found in wxscan/rust/Cargo.toml');
       } else if (line.contains('path')) {
         print(
           '  note  $dep is on a path dependency — development mode.\n'
-          '        Run `release-deps` before publishing wxscan_core.',
+          '        Run `release-deps` before publishing wxscan.',
         );
       } else {
         pass('$dep is on a version dependency: $line');
@@ -98,7 +98,7 @@ class PublishKit {
         .contains('[patch.crates-io]');
     if (hasPatch) {
       print(
-        '  note  wxscan_core/rust carries a [patch.crates-io] block —\n'
+        '  note  wxscan/rust carries a [patch.crates-io] block —\n'
         '        development mode. `release-deps` removes it.',
       );
     }
@@ -220,23 +220,23 @@ class PublishKit {
     )) {
       await _manifests.setPubspecVersion(dirOf(target), v[Repo.dart]!);
     }
-    // wxscan's constraint on wxscan_core has to move with it, or the newly
-    // published wxscan resolves against the previous core.
+    // wxscan_live's constraint on wxscan has to move with it, or the newly
+    // published plugin resolves against the previous scanner.
     await _manifests.setPubDependency(
-      p.join(rootOf(Repo.dart), 'packages/wxscan'),
-      'wxscan_core',
+      p.join(rootOf(Repo.dart), 'packages/wxscan_live'),
+      'wxscan',
       '^${v[Repo.dart]}',
     );
   }
 
   // ---- dependency mode ----------------------------------------------------
 
-  /// Switches `wxscan_core/rust` to pure crates.io versions.
+  /// Switches `wxscan/rust` to pure crates.io versions.
   ///
-  /// Run after every crate is published and before publishing wxscan_core.
+  /// Run after every crate is published and before publishing wxscan.
   Future<void> releaseDeps() async {
     final version = await _manifests.readVersion(rootOf(Repo.rust));
-    print('wxscan_core/rust -> crates.io $version');
+    print('wxscan/rust -> crates.io $version');
 
     // Feature flags stay exactly as the development manifest had them: this
     // package wants wxscan's default features, and quietly turning them off
@@ -260,7 +260,7 @@ class PublishKit {
   /// their Rust changes stopped taking effect.
   Future<void> restoreDev() async {
     final up = _coreToWorkspace;
-    print('wxscan_core/rust -> path dependencies under $up');
+    print('wxscan/rust -> path dependencies under $up');
 
     for (final dep in ['wxscan-ffi', 'wxscan']) {
       await _manifests.setCargoDependency(

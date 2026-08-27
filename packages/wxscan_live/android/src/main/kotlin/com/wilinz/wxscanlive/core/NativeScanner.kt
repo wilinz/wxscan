@@ -17,6 +17,10 @@ object NativeScanner {
         // loader normally brings it in; loading it first covers the cases where
         // it does not.
         try { System.loadLibrary("LiteRt") } catch (_: Throwable) {}
+        // Not a leftover: the Rust crate behind the `wxscan` package keeps the
+        // name `wxscan_core`, because it depends on the upstream `wxscan`
+        // crate and cargo will not resolve a package against a dependency
+        // sharing its own name. This is the library that crate produces.
         System.loadLibrary("wxscan_core")
     }
 
