@@ -2,4 +2,10 @@
 # not one yet, so what must stay out of the archive is listed here.
 .dart_tool/
 build/
-rust/target/
+example/build/
+example/.dart_tool/
+example/ios/Pods/
+example/macos/Pods/
+example/android/.gradle/
+example/ios/Flutter/ephemeral/
+example/macos/Flutter/ephemeral/

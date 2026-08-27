@@ -4,17 +4,18 @@
 
 First release.
 
-- Live scanning with the camera driven natively: CameraX on Android,
-  AVFoundation on iOS and macOS. Frames go straight into the scanner without
-  passing through Dart, and the preview is a Flutter texture backed by the same
-  buffer.
-- Reports every symbol in a frame, with corner coordinates, so several codes in
-  view can be told apart and picked between.
-- Torch, zoom and capture resolution, each readable as well as settable;
-  `setZoom` reports the ratio the device clamped to rather than the one asked
-  for.
-- The native side is reached through `WxScanPlatform.instance`, which a test can
-  replace to stand in for the camera.
-- No native code is built here: the scanner comes from `wxscan_core` as a code
-  asset, which Android finds through `System.loadLibrary` and Apple platforms
-  through `dlsym`.
+- Decodes images and raw pixel buffers through a Rust port of the
+  `wechat_qrcode` algorithm: CNN detection, super resolution and decoding, with
+  no OpenCV.
+- A plain Dart package rather than a Flutter plugin. `hook/build.dart` builds
+  the native library and bundles it, together with the TFLite C library, as
+  code assets, so `dart run` and `dart test` work as well as Flutter does and
+  there are no platform build files.
+- Scanning runs on a worker isolate owned by the scanner, so a stream costs one
+  message round trip per frame rather than an isolate spawn.
+- `scanPixels` takes RGB, RGBA, BGR or BGRA and converts natively, so a caller
+  decoding a PNG or a JPEG does not convert pixels in Dart.
+- Detection is configurable: `confidenceThreshold`, `nmsThreshold` and
+  `scaleFactor` read and write without contending for the scanner's lock.
+- Mismatched dimensions raise `ArgumentError` instead of returning an empty
+  result that looks like a frame with nothing in it.

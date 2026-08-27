@@ -1,0 +1,47 @@
+name: wxscan_live
+description: Live QR scanning. Camera frames go straight into a Rust port of the wechat_qrcode algorithm without passing through Dart; the preview is a Flutter texture. CameraX on Android, AVFoundation on Apple platforms.
+version: 0.1.0
+homepage: https://github.com/wilinz/wxscan
+repository: https://github.com/wilinz/wxscan
+issue_tracker: https://github.com/wilinz/wxscan/issues
+
+environment:
+  sdk: ">=3.10.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter_web_plugins:
+    sdk: flutter
+  flutter:
+    sdk: flutter
+  # Provides the native library, as a code asset, and the result types shared
+  # with the image-decoding path. Hosted rather than a path, because pub refuses
+  # to publish a package that depends on one; dependency_overrides below points
+  # it back at this checkout for development.
+  wxscan: ^0.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.wilinz.wxscanlive
+        pluginClass: WxScanLivePlugin
+      ios:
+        pluginClass: WxScanLivePlugin
+      macos:
+        pluginClass: WxScanLivePlugin
+      web:
+        pluginClass: WxScanWeb
+        fileName: src/web/platform_web.dart
+
+# Development only; anything depending on this package ignores it. Without it
+# the hosted constraint above would send pub looking on pub.dev for a package
+# that lives next door.
+dependency_overrides:
+  wxscan:
+    path: ../wxscan

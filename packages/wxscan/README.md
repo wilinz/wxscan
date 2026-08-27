@@ -1,29 +1,24 @@
 # wxscan
 
-Live QR scanning for Flutter, backed by a Rust port of the `wechat_qrcode`
-algorithm: CNN-based detection, super resolution, and decoding.
+QR decoding for Flutter, backed by a Rust port of the `wechat_qrcode` algorithm:
+CNN-based detection, super resolution, and decoding.
 
-Camera frames go from CameraX or AVFoundation straight into the scanner and
-never cross into Dart, which keeps a per-frame copy off the UI isolate. What
-arrives in Dart is the outcome of each frame; the preview is a Flutter texture
-backed by the same buffer.
+This package decodes images and raw pixel buffers. It does not open a camera —
+for live scanning use [`wxscan`](https://pub.dev/packages/wxscan), which drives
+the camera natively and builds the same Rust crate for its own link step.
 
-To decode a still image instead, use
-[`wxscan_core`](https://pub.dev/packages/wxscan_core), which exposes the same
-scanner to Dart.
-
-**[Try it in a browser](https://wilinz.github.io/wxscan/)** — the example
-application, built for the web and running the same Rust scanner as WebAssembly.
-It opens on a menu, and asks for the camera only if you choose live scanning;
-decoding a picture never needs one.
+It is a plain Dart package, not a Flutter plugin: the native library is built
+and bundled by a [build hook](https://dart.dev/tools/hooks), so it works under
+`dart run` and `dart test` as well as in a Flutter application, and there are no
+platform build files to maintain.
 
 ## Quick start
 
 ```sh
-flutter pub add wxscan
+flutter pub add wxscan     # or `dart pub add wxscan` outside Flutter
 ```
 
-**1. The weights.** They are not bundled. Download `detect.tflite` and
+The CNN weights are not bundled with the package. Download `detect.tflite` and
 `sr.tflite` from
 [wxscan-weights](https://github.com/wilinz/wxscan-weights), put them in
 `assets/models/`, and declare the folder in `pubspec.yaml`:
@@ -33,20 +28,6 @@ flutter:
   assets:
     - assets/models/
 ```
-
-**2. Camera permission.** The plugin does not ask for it; it fails with a
-`NO_PERMISSION` `PlatformException` if it has not been granted. Declare it, and
-request it with a package such as
-[`permission_handler`](https://pub.dev/packages/permission_handler) before
-calling `initialize`:
-
-| Platform | Where |
-|---|---|
-| Android | `<uses-permission android:name="android.permission.CAMERA" />` in `AndroidManifest.xml` |
-| iOS, macOS | `NSCameraUsageDescription` in `Info.plist` |
-| macOS | also `com.apple.security.device.camera` in both `.entitlements` files |
-
-**3. Start the camera and listen.**
 
 ```dart
 import 'package:flutter/services.dart' show rootBundle;
@@ -59,125 +40,134 @@ Future<Uint8List> _asset(String path) async {
   return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
 }
 
-final info = await WxScan.initialize(
-  resolution: WxResolution.p720,
+final scanner = await WxScanner.create(
   detectModel: await _asset('assets/models/detect.tflite'),
   srModel: await _asset('assets/models/sr.tflite'),
 );
 
-WxScan.scanStream.listen((outcome) {
-  for (final r in outcome.results) {
-    print(r.text);
-  }
-});
+// `gray` is 8-bit grayscale, one byte per pixel, row after row.
+final outcome = await scanner.scanGray(gray, width, height);
+for (final r in outcome.results) {
+  print('${r.text} (v${r.version}/${r.ecLevel}/${r.charset})');
+}
+
+scanner.dispose();
 ```
 
-**4. Show the preview.** It is a Flutter texture, rotated for the current
-interface orientation:
+Both weights are optional. Leaving them out decodes without the CNN stages,
+which still reads ordinary codes — see [Models](#models).
 
-```dart
-StreamBuilder<WxPreviewSize>(
-  stream: WxScan.previewSizeStream,
-  builder: (context, snapshot) {
-    final size = snapshot.data;
-    if (size == null) return const SizedBox.shrink();
-    return RotatedBox(
-      quarterTurns: size.quarterTurns,
-      child: Texture(textureId: info.textureId),
-    );
-  },
-);
-```
+## Working with a scanner
 
-Call `WxScan.dispose()` when leaving the screen. `setScanning(false)` pauses
-decoding while leaving the camera and preview running, which is what you want
-while a result sheet is up.
+Creating a scanner is expensive, since it builds a TFLite interpreter, so keep
+one for as long as you are scanning. One instance decodes one image at a time;
+concurrent calls are serialized natively, and several instances scan in
+parallel.
 
-[`packages/wxscan/example`](example) is a working application doing all of the
-above, plus torch, zoom, decoding from the photo library and picking among
-several codes in one frame.
+The asynchronous methods run in a background isolate, so a large image does not
+block the UI. `scanGraySync` and `scanFrameSync` are for callers already off the
+main isolate. Dropping a scanner without `dispose()` still releases it, but only
+when the garbage collector gets to it, which keeps the models in memory
+meanwhile.
 
-**It is also where the user interface is.** This package draws the camera image
-and reports what was found; the viewfinder, the corners drawn over each decoded
-code, the picker for several codes in one frame, and the mapping from frame
-coordinates to screen coordinates that keeps drawing and tapping in agreement
-are all in [`example/lib/scan_page.dart`](example/lib/scan_page.dart), written
-to be read and copied rather than depended on.
+For camera frames, `scanFrame` takes a row stride, a rotation, and a `mirror`
+flag that mirrors the returned x coordinates. The frame itself is never
+mirrored, because the detector is trained on unmirrored input; the flag exists
+so coordinates line up with a preview displayed mirrored.
 
 ## Results
 
-Each frame produces one `ScanOutcome`, with empty results when nothing was
-found. `candidates` holds what the detector located; candidates without results
-— `hasUndecodable` — mean a symbol was seen but could not be decoded, usually
-because it is too small or too blurred, which is the signal to zoom in.
+Coordinates are `ScanPoint`, not `dart:ui`'s `Offset`: this package is plain
+Dart and cannot depend on Flutter. The field names match, so a Flutter caller
+writes `Offset(p.dx, p.dy)`.
 
-Coordinates are in the upright frame, whose size is on the outcome. They already
-account for rotation, and for mirroring where the preview is mirrored, so they
-can be mapped onto the preview without further correction.
+`ScanResult` carries both `text` and `bytes`. QR content is not required to be
+text, so `bytes` is authoritative; `text` is it decoded according to `charset`,
+which the decoder reports as `UTF-8` or `GB2312` without converting.
 
-## Camera control
-
-`setResolution`, `setTorch`, `hasTorch`, `setZoom`, `zoomRange`, and
-`grabFrame`, which returns the most recent frame as an upright JPEG at the size
-being decoded — usable as a frozen picture while the user picks among several
-codes.
-
-Higher resolutions cost proportionally more per frame, but a dense symbol
-cannot be decoded at all without enough pixels. 720p is enough for everyday
-codes.
+`ScanOutcome.candidates` holds what the detector found. Candidates without
+results — `hasUndecodable` — mean a symbol was located but could not be decoded,
+usually because it is too small or too blurred. Zooming in is a better response
+than reporting a failure.
 
 ## Models
 
-The TFLite weights are passed to `initialize`, typically from an asset. The
-plugin loads them into a scanner it owns; that scanner is separate from any held
-by `wxscan_core`, since this path never goes through Dart. Omitting them, or
-passing weights that fail to load, falls back to decoding without the CNN stages
-rather than failing — `WxScanCameraInfo.modelsLoaded` reports which mode is
-active.
+The TFLite weights are not bundled; pass them in as bytes, typically from an
+asset. Passing null for both selects the mode without models, and a model that
+fails to load falls back to that mode rather than throwing. Decoding still works
+there; what it loses is the detection rate on small or distant symbols, which is
+what the CNN stages contribute. `hasModels` reports which mode is active.
+
+## The build hook
+
+`hook/build.dart` does everything the platform build systems used to: it
+downloads the TFLite C library, builds the Rust crate in `rust/`, and declares
+both as code assets. The Dart tooling then places them together and rewrites the
+dependency between them, so nothing has to arrange an rpath.
+
+CNN inference uses the TFLite C library, which is downloaded at build time
+rather than shipped here. Every artifact is pinned by version and SHA-256 in
+`tool/tflite.lock`; a mismatch fails the build. To upgrade, run
+`tool/update_tflite_lock.sh <litert-version> <desktop-version>`, which
+re-downloads each artifact and rewrites the checksums. Editing that file is the
+only way to point at a different build: the hook runner scrubs the environment,
+so nothing there is consulted.
+
+| Platform | Source |
+|---|---|
+| Android | Google Maven, `com.google.ai.edge.litert:litert` |
+| iOS | the release channel the TensorFlowLiteC pod serves — a static framework, so it is linked into the Rust library rather than bundled beside it |
+| macOS, Linux, Windows | prebuilt release; there is no official desktop distribution, so the repository is named in `tflite.lock` |
+
+Downloads are cached in the hook's shared output directory, so only the first
+build pays for them. That build also compiles the Rust sources, which takes a
+few minutes; later builds are incremental.
 
 ## The browser
 
-`getUserMedia` opens the camera, a `<video>` plays it, and each frame is read
-through a canvas and sent to the scanner, which runs in a worker so that
-decoding does not block the page. Every method is the same as on a phone; what
-differs:
+The web build is the same algorithm and the same weights, compiled to
+WebAssembly, running in a worker so that decoding a frame does not block the
+page. `WxScanner` is the same class with the same methods; what differs:
 
-- The preview is a platform view rather than a texture, so compose it with
-  [`WxScanPreview`](lib/src/preview.dart) instead of `Texture`. It is the same
-  widget on every platform and stands in for `Texture` exactly — upright in the
-  device's natural orientation, rotated and sized by whatever holds it.
-- Frames cross into Dart here, where natively they never do. A 1080p frame
-  costs a canvas read and a transfer to the worker, which is why the scan rate
-  on the web follows the frame size closely.
-- Torch and zoom are `MediaStreamTrack` constraints. Browsers support them
-  unevenly, so `hasTorch` and `zoomRange` report what the track actually
-  claims — usually nothing on a desktop.
-- The four files `wxscan_core` needs on the web have to be served by the
-  application: run `dart run wxscan_core:fetch_web` once, which puts them in
-  `web/wxscan/`, where they are found without configuration.
+- `scanGraySync` and the other `*Sync` methods throw `UnsupportedError`. The
+  engine answers by message from a worker, so there is nothing to return in the
+  same call.
+- Four files have to be served by the application. They ship inside this
+  package, and one command copies them out:
+
+  ```sh
+  dart run wxscan:fetch_web        # into web/wxscan
+  ```
+
+  Nothing else needs configuring, since that is where the package looks. For
+  another directory, pass `--into` and say where with `configureWxScanWeb` from
+  `package:wxscan/web.dart`.
+
+  They are files rather than declared assets because declaring Flutter assets
+  would make this a Flutter package, and `dart run` and `dart test` would stop
+  working. `crates/wxscan-wasm` and `tools/tflite-wasm` in
+  [wxscan-rs](https://github.com/wilinz/wxscan-rs) build the three WebAssembly
+  ones; `--from` takes them from such a build instead of from here.
+
+Inference is TensorFlow Lite with the XNNPACK delegate, the same runtime the
+other platforms use, so a browser reads the same `.tflite` files. A 1080p frame
+takes about 220 ms against a native 135 ms, of which inference is 8 ms; the
+rest is the decoder, in the same proportion as native.
+
+The four files come to 1.8 MB, 660 KB over the wire compressed — the scanner
+462 KB and the runtime 1.3 MB, the latter carrying only the sixteen operators
+these two models use rather than the 150 a stock build registers.
 
 ## Platforms
 
-| Platform | Camera |
+| Platform | Notes |
 |---|---|
-| Android | CameraX, API 24+ |
-| iOS | AVFoundation, 13.0+ |
-| macOS | AVFoundation, 10.15+ |
-| Web | `getUserMedia`; see [The browser](#the-browser) |
-
-## The native library
-
-Nothing native is built here. The scanner comes from
-[`wxscan_core`](https://pub.dev/packages/wxscan_core), whose build hook produces
-it as a Dart code asset; this package is a dependency of that one, so an
-application that uses either gets exactly one copy.
-
-The Swift and Kotlin code calls the scanner's C ABI directly, because camera
-frames never pass through Dart. A code asset is loaded by the Dart runtime
-rather than linked by Xcode or Gradle, so those entry points are resolved at run
-time: on Android Flutter puts the asset in the APK's `lib/<abi>/`, where
-`System.loadLibrary` already looks, and on iOS and macOS `WxScanNative.swift`
-opens the bundled framework and reads the symbols with `dlsym`.
+| Android | arm64-v8a, armeabi-v7a, x86_64. LiteRT publishes no 32-bit x86 build, so an application targeting that ABI must exclude it. |
+| iOS | 13.0+ |
+| macOS | 10.15+, arm64 |
+| Linux, Windows | x86_64 (Linux also arm64) |
+| Dart (no Flutter) | macOS, Linux, Windows — `dart run` and `dart test` build and load the library through the hook |
+| Web | WebAssembly in a worker; see [The browser](#the-browser) |
 
 ## Licence
 

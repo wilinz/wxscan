@@ -1,1 +1,2 @@
-# Nothing native is built here; see the wxscan_core package.
+# Rust build output
+rust/target/
