@@ -91,7 +91,9 @@ That distinction is the point of the exception. A file nothing could open used
 to be indistinguishable from a picture with no code in it, and the two call for
 different things to be said.
 
-**HEIC needs the platform.** This build decodes PNG, JPEG, BMP, GIF, WebP and
+### HEIC and the platform decoder
+
+This build decodes PNG, JPEG, BMP, GIF, WebP and
 TIFF. HEIC — which is most of an iPhone's photo library — needs a system
 framework, and `scanPath` reports it as
 `PictureReadFailure.unsupportedFormat`. Fall back to the platform's own

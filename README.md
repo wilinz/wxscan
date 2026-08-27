@@ -9,9 +9,10 @@ flutter pub add wxscan          # decoding images and pixel buffers, no camera
 flutter pub add wxscan_live     # live camera scanning, on top of it
 ```
 
-Then follow the quick start in [wxscan](packages/wxscan/README.md) or
-[wxscan_live](packages/wxscan_live/README.md) — install, weights, permissions
-and a first scan on one screen. The rest of this file is about the repository.
+Then follow the quick start in [wxscan](packages/wxscan/README.md#quick-start)
+or [wxscan_live](packages/wxscan_live/README.md#quick-start) — install, weights,
+permissions and a first scan on one screen. The rest of this file is about the
+repository.
 
 **[Live demo](https://wilinz.github.io/wxscan/)** — the example application in a
 browser, running the same Rust scanner compiled to WebAssembly. Live scanning or
@@ -23,6 +24,77 @@ around them — viewfinder, the corners drawn over each code, picking among
 several at once — is
 [`packages/wxscan_live/example`](packages/wxscan_live/example/lib/scan_page.dart),
 which is there to be read and copied.
+
+## Using it
+
+Both need the CNN weights, which are not bundled — download `detect.tflite` and
+`sr.tflite` from [wxscan-weights](https://github.com/wilinz/wxscan-weights) and
+declare the folder that holds them. Without them decoding still works; what it
+loses is the detection rate on small and distant symbols.
+
+**Decode a picture.** `scanPath` reads and decodes the file natively, so a 12
+megapixel photograph never becomes 48 MB of RGBA in Dart:
+
+`detectBytes` and `srBytes` below are those two files' bytes; both quick starts
+show loading them from assets, offsets and all.
+
+```dart
+import 'package:wxscan/wxscan.dart';
+
+final scanner = await WxScanner.create(
+  detectModel: detectBytes,
+  srModel: srBytes,
+);
+
+try {
+  final outcome = await scanner.scanPath('/path/to/photo.jpg');
+  for (final r in outcome.results) print(r.text);
+} on PictureUnreadable {
+  // Not a picture, or a format this build cannot decode — HEIC wants the
+  // platform's own decoder and `scanPixels`. Different from a picture with
+  // no code in it, which comes back as an empty outcome.
+}
+```
+
+→ [which method to call](packages/wxscan/README.md#which-method-to-call) ·
+[the HEIC fallback](packages/wxscan/README.md#heic-and-the-platform-decoder) ·
+[tuning detection](packages/wxscan/README.md#tuning-detection) ·
+[working with a scanner](packages/wxscan/README.md#working-with-a-scanner)
+
+**Scan with the camera.** Camera permission has to be granted before
+`initialize`; the plugin does not ask for it.
+
+```dart
+import 'package:wxscan_live/wxscan_live.dart';
+
+final info = await WxScan.initialize(
+  resolution: WxResolution.p720,
+  detectModel: detectBytes,
+  srModel: srBytes,
+);
+
+WxScan.scanStream.listen((outcome) {
+  for (final r in outcome.results) print(r.text);
+});
+
+// The preview is `WxScanPreview(info: info)` — a texture natively, a platform
+// view in a browser — turned and fitted by whatever holds it.
+```
+
+→ [permissions and a full first screen](packages/wxscan_live/README.md#quick-start) ·
+[camera control](packages/wxscan_live/README.md#camera-control) ·
+[tap to focus](packages/wxscan_live/README.md#focus) ·
+[best practices](packages/wxscan_live/README.md#best-practices)
+
+**Where the rest lives**
+
+| Question | Answer |
+|---|---|
+| What comes back from a frame | [Results](packages/wxscan/README.md#results) · [live results](packages/wxscan_live/README.md#results) |
+| What the weights do, and life without them | [Models](packages/wxscan/README.md#models) |
+| Serving it in a browser | [wxscan](packages/wxscan/README.md#the-browser) · [wxscan_live](packages/wxscan_live/README.md#the-browser) |
+| How the native library is built and found | [the build hook](packages/wxscan/README.md#the-build-hook) · [the native library](packages/wxscan_live/README.md#the-native-library) |
+| A whole scanning screen to read or copy | [`example/lib/scan_page.dart`](packages/wxscan_live/example/lib/scan_page.dart) |
 
 ## Why this one
 
