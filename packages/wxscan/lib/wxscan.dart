@@ -19,6 +19,7 @@ import 'src/platform.dart';
 export 'package:wxscan_core/wxscan_core.dart'
     show ScanResult, ScanOutcome, ScanPoint, ScanQuad;
 export 'src/platform.dart' show WxScanPlatform, MethodChannelWxScan;
+export 'src/preview.dart' show WxScanPreview;
 
 /// What the camera reported when it started.
 class WxScanCameraInfo {

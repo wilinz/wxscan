@@ -10,6 +10,8 @@ environment:
   flutter: ">=3.19.0"
 
 dependencies:
+  flutter_web_plugins:
+    sdk: flutter
   flutter:
     sdk: flutter
   # Provides the native library, as a code asset, and the result types shared
@@ -33,6 +35,9 @@ flutter:
         pluginClass: WxScanPlugin
       macos:
         pluginClass: WxScanPlugin
+      web:
+        pluginClass: WxScanWeb
+        fileName: src/web/platform_web.dart
 
 # Development only; anything depending on this package ignores it. Without it
 # the hosted constraint above would send pub looking on pub.dev for a package

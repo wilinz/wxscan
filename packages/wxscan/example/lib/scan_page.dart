@@ -577,10 +577,10 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   }
 
   Widget _buildPreview(WxScanCameraInfo info) {
-    // The texture content is always upright with respect to the device's
-    // natural orientation, so however far the screen turned is made up here,
-    // and the box outside is sized to the dimensions after that. The two have
-    // to agree, or BoxFit.cover stretches by the wrong ratio.
+    // The preview is always upright with respect to the device's natural
+    // orientation, so however far the screen turned is made up here, and the
+    // box outside is sized to the dimensions after that. The two have to
+    // agree, or BoxFit.cover stretches by the wrong ratio.
     final size = _previewSize ??
         WxPreviewSize(
             info.previewWidth, info.previewHeight, info.displayRotation);
@@ -595,7 +595,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
             child: SizedBox(
               width: size.width.toDouble(),
               height: size.height.toDouble(),
-              child: Texture(textureId: info.textureId),
+              child: WxScanPreview(info: info),
             ),
           ),
         ),

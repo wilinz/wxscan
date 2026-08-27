@@ -26,7 +26,8 @@ library;
 
 import 'src/web/scanner_web.dart';
 
-export 'src/web/scanner_web.dart' show WxScanWebPaths;
+export 'src/web/scanner_web.dart' show WxScanWebPaths, startWxScanWorker;
+export 'src/web/worker.dart' show WxScanWorker;
 
 /// Points the browser build at the files the application serves.
 ///

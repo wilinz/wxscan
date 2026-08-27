@@ -72,7 +72,10 @@ class WxScanWorker {
             ..setProperty('sr'.toJS, srModel.buffer.toJS);
         }
       },
-      transfer: [wxscanWasm.buffer.toJS, if (withModels) detectModel.buffer.toJS, if (withModels) srModel.buffer.toJS],
+      // Copied rather than transferred, unlike a frame. These buffers belong
+      // to the caller, who has every reason to keep them — the camera plugin
+      // and a still-image scanner in one application are handed the same
+      // weights — and transferring would empty them on the way out.
     );
     client.hasDetector = reply.getProperty<JSBoolean>('hasDetector'.toJS).toDart;
     client.hasSuperResolution =
@@ -123,8 +126,10 @@ class WxScanWorker {
 
   /// Runs one of the scan commands.
   ///
-  /// The pixel buffer is transferred rather than copied, so the caller's copy
-  /// is emptied; every public entry point below hands over a buffer it owns.
+  /// The pixel buffer is **transferred**, not copied, which is what makes a
+  /// frame free to hand over and leaves the caller's view of it empty. Every
+  /// entry point below is called either with a buffer its caller owns outright
+  /// — a frame straight from a canvas — or with a copy made for the purpose.
   Future<ScanOutcome> _scan(
     String command,
     Uint8List pixels,
@@ -132,6 +137,22 @@ class WxScanWorker {
     int height, [
     void Function(JSObject message)? extra,
   ]) async {
+    final json = await _scanJson(command, pixels, width, height, extra);
+    return json == null ? ScanOutcome.empty : parseFrameJson(json);
+  }
+
+  /// As [_scan], but stopping at the document.
+  ///
+  /// The camera plugin forwards this as it stands: its own event stream is
+  /// already a stream of these, from the platform bindings that produce them
+  /// natively, so parsing here and re-encoding there would be waste.
+  Future<String?> _scanJson(
+    String command,
+    Uint8List pixels,
+    int width,
+    int height,
+    void Function(JSObject message)? extra,
+  ) async {
     final buffer = pixels.buffer;
     final reply = await _send(
       command,
@@ -144,10 +165,15 @@ class WxScanWorker {
       },
       transfer: [buffer.toJS],
     );
-    final json = reply.getProperty<JSString?>('json'.toJS);
-    if (json == null) return ScanOutcome.empty;
-    return parseFrameJson(json.toDart);
+    return reply.getProperty<JSString?>('json'.toJS)?.toDart;
   }
+
+  /// Decodes a colour image and hands back the document itself, for a caller
+  /// that forwards documents.
+  Future<String?> scanPixelsJson(
+          Uint8List pixels, int width, int height, int format) =>
+      _scanJson('scanPixels', pixels, width, height,
+          (m) => m.setProperty('format'.toJS, format.toJS));
 
   /// Decodes an upright, tightly packed grayscale image.
   Future<ScanOutcome> scanGray(Uint8List gray, int width, int height) =>

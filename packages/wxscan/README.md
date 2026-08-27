@@ -119,6 +119,27 @@ passing weights that fail to load, falls back to decoding without the CNN stages
 rather than failing — `WxScanCameraInfo.modelsLoaded` reports which mode is
 active.
 
+## The browser
+
+`getUserMedia` opens the camera, a `<video>` plays it, and each frame is read
+through a canvas and sent to the scanner, which runs in a worker so that
+decoding does not block the page. Every method is the same as on a phone; what
+differs:
+
+- The preview is a platform view rather than a texture, so compose it with
+  [`WxScanPreview`](lib/src/preview.dart) instead of `Texture`. It is the same
+  widget on every platform and stands in for `Texture` exactly — upright in the
+  device's natural orientation, rotated and sized by whatever holds it.
+- Frames cross into Dart here, where natively they never do. A 1080p frame
+  costs a canvas read and a transfer to the worker, which is why the scan rate
+  on the web follows the frame size closely.
+- Torch and zoom are `MediaStreamTrack` constraints. Browsers support them
+  unevenly, so `hasTorch` and `zoomRange` report what the track actually
+  claims — usually nothing on a desktop.
+- The four files `wxscan_core` needs on the web have to be served by the
+  application: run `dart run wxscan_core:fetch_web` once, which puts them in
+  `web/wxscan/`, where they are found without configuration.
+
 ## Platforms
 
 | Platform | Camera |
@@ -126,6 +147,7 @@ active.
 | Android | CameraX, API 24+ |
 | iOS | AVFoundation, 13.0+ |
 | macOS | AVFoundation, 10.15+ |
+| Web | `getUserMedia`; see [The browser](#the-browser) |
 
 ## The native library
 

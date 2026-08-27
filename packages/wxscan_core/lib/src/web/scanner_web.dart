@@ -79,6 +79,26 @@ Future<Uint8List> _fetch(String url) async {
   return response;
 }
 
+/// Starts a worker with the engine in it, fetching what it needs.
+///
+/// [WxScanner] is one caller. The other is the camera plugin, which forwards
+/// the documents a scan produces rather than the outcomes parsed from them,
+/// and so works one level below.
+Future<WxScanWorker> startWxScanWorker({
+  Uint8List? detectModel,
+  Uint8List? srModel,
+}) async {
+  final paths = wxScanWebPaths;
+  final withModels = detectModel != null && srModel != null;
+  return WxScanWorker.start(
+    workerUrl: paths.workerUrl,
+    wxscanWasm: await _fetch(paths.wasmUrl),
+    tfliteUrl: withModels ? paths.tfliteUrl : null,
+    detectModel: detectModel,
+    srModel: srModel,
+  );
+}
+
 /// A scanner backed by the WebAssembly build, running in a worker.
 class WxScanner {
   WxScanner._(this._worker);
@@ -103,18 +123,11 @@ class WxScanner {
   static Future<WxScanner> create({
     Uint8List? detectModel,
     Uint8List? srModel,
-  }) async {
-    final paths = wxScanWebPaths;
-    final withModels = detectModel != null && srModel != null;
-    final worker = await WxScanWorker.start(
-      workerUrl: paths.workerUrl,
-      wxscanWasm: await _fetch(paths.wasmUrl),
-      tfliteUrl: withModels ? paths.tfliteUrl : null,
-      detectModel: detectModel,
-      srModel: srModel,
-    );
-    return WxScanner._(worker);
-  }
+  }) async =>
+      WxScanner._(await startWxScanWorker(
+        detectModel: detectModel,
+        srModel: srModel,
+      ));
 
   void _checkAlive() {
     if (_disposed) {
@@ -142,19 +155,19 @@ class WxScanner {
 
   /// Decodes a camera frame: a Y plane with a row stride, rotated upright.
   Future<ScanOutcome> scanFrame(
-    Uint8List plane,
+    Uint8List data,
     int width,
     int height, {
-    int rowStride = 0,
+    int? rowStride,
     int rotation = 0,
     bool mirror = false,
   }) {
     _checkAlive();
     return _worker.scanFrame(
-      Uint8List.fromList(plane),
+      Uint8List.fromList(data),
       width,
       height,
-      rowStride: rowStride == 0 ? width : rowStride,
+      rowStride: rowStride ?? width,
       rotation: rotation,
       mirror: mirror,
     );
@@ -181,10 +194,10 @@ class WxScanner {
 
   /// Not available in a browser: the scanner runs in a worker.
   ScanOutcome scanFrameSync(
-    Uint8List plane,
+    Uint8List data,
     int width,
     int height, {
-    int rowStride = 0,
+    int? rowStride,
     int rotation = 0,
     bool mirror = false,
   }) =>
