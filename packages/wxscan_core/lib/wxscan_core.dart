@@ -18,7 +18,14 @@
 /// ```
 library;
 
-export 'src/result.dart' show ScanResult, ScanOutcome, ScanPoint, ScanQuad;
+export 'src/result.dart'
+    show
+        PictureReadFailure,
+        PictureUnreadable,
+        ScanOutcome,
+        ScanPoint,
+        ScanQuad,
+        ScanResult;
 export 'src/frame_json.dart' show parseFrameJson;
 // The scanner is the FFI one everywhere a shared library can be opened, and
 // the WebAssembly one in a browser, where it cannot. Both present the same

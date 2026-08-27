@@ -83,7 +83,14 @@ async function init({ wxscan, tflite, detect, sr }) {
   }
 
   const { instance } = await WebAssembly.instantiate(new Uint8Array(wxscan), {
-    wxscan: { wxscan_host_forward: hostForward, wxscan_host_fetch: hostFetch },
+    wxscan: {
+      wxscan_host_forward: hostForward,
+      wxscan_host_fetch: hostFetch,
+      // The module has no clock of its own: `std::time::Instant` panics on
+      // wasm32-unknown-unknown. Its stage timers read this one, and report
+      // microseconds, so they stay comparable with the native build's.
+      wxscan_host_now_us: () => performance.now() * 1000,
+    },
   });
   wx = instance.exports;
 

@@ -1,5 +1,6 @@
 /// Runs the scanner from plain Dart: no Flutter, no platform build system.
 /// The build hook produces the native library and the TFLite one beside it.
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
@@ -158,6 +159,145 @@ void main() {
     test('an empty quad does not throw', () {
       expect(const <ScanPoint>[].centre, const ScanPoint(0, 0));
       expect(const <ScanPoint>[].longestSide, 0);
+    });
+  });
+
+  group('a colour image decodes the same however its pixels are laid out', () {
+    // A version 3 QR, as its modules. Built here rather than loaded so that the
+    // test needs no asset and no image decoder, and so that the same intensities
+    // reach every layout below.
+    //
+    // Blank images cannot catch what this catches. The grayscale conversion was
+    // once wrong by a factor of two and wrapped rather than clamped, which turns
+    // mid grey black and shreds every camera frame — and every test that only
+    // asserted "nothing found in a blank image" went on passing. This asserts
+    // the five layouts agree with each other and with the gray path, which is
+    // false the moment that conversion drifts again.
+    const modules = [
+    '11111110101111011110001111111',
+    '10000010001111000101001000001',
+    '10111010010100000100101011101',
+    '10111010101011101010001011101',
+    '10111010111111011010001011101',
+    '10000010110000101111101000001',
+    '11111110101010101010101111111',
+    '00000000111110000110000000000',
+    '10001011100000010101011111001',
+    '00010000101100111000011111111',
+    '10001110011100010010101100001',
+    '00110101101110101101101111011',
+    '00000010001010000110110000010',
+    '00111000110111111110001111111',
+    '00000111110101010010111101101',
+    '00100001000010000111110000011',
+    '01010110100111111100100100010',
+    '10110100001101101110101111011',
+    '00101011001110011010100000101',
+    '00100001110010000110110110011',
+    '11110010111101101100111111001',
+    '00000000111010111001100010001',
+    '11111110101001110101101011101',
+    '10000010010101001101100010011',
+    '10111010101011000101111111001',
+    '10111010010110111010010000001',
+    '10111010010001111111110001111',
+    '10000010011110100110111011011',
+    '11111110100101110100111111010'
+    ];
+    const quiet = 4, scale = 4;
+    final side = (modules.length + quiet * 2) * scale;
+
+    /// The code as 8-bit grey, with a quiet zone, at [scale] pixels a module.
+    Uint8List gray() {
+      final out = Uint8List(side * side)..fillRange(0, side * side, 255);
+      for (var y = 0; y < modules.length; y++) {
+        for (var x = 0; x < modules.length; x++) {
+          if (modules[y][x] != '1') continue;
+          for (var dy = 0; dy < scale; dy++) {
+            final row = ((y + quiet) * scale + dy) * side;
+            final from = row + (x + quiet) * scale;
+            out.fillRange(from, from + scale, 0);
+          }
+        }
+      }
+      return out;
+    }
+
+    /// The same picture with [channels] bytes a pixel, grey in every colour
+    /// channel and, where there is a fourth, opaque.
+    Uint8List spread(Uint8List g, int channels) {
+      final out = Uint8List(g.length * channels);
+      for (var i = 0; i < g.length; i++) {
+        for (var c = 0; c < channels; c++) {
+          out[i * channels + c] = c == 3 ? 255 : g[i];
+        }
+      }
+      return out;
+    }
+
+    late WxScanner scanner;
+    setUp(() async => scanner = await WxScanner.create());
+    tearDown(() => scanner.dispose());
+
+    test('every layout reads it, and reads the same text', () async {
+      final g = gray();
+      final expected = (await scanner.scanGray(g, side, side)).results;
+      expect(expected, isNotEmpty, reason: 'the gray path decodes the code');
+      final text = expected.first.text;
+
+      for (final (format, channels) in [
+        (WxPixelFormat.rgb, 3),
+        (WxPixelFormat.rgba, 4),
+        (WxPixelFormat.bgr, 3),
+        (WxPixelFormat.bgra, 4),
+      ]) {
+        final outcome = await scanner.scanPixels(
+            spread(g, channels), side, side,
+            format: format);
+        expect(outcome.results.map((r) => r.text), [text], reason: '$format');
+      }
+    });
+  });
+
+  group('a picture read from a path', () {
+    // The same code as the group above, written out as a file: the native
+    // reader has to arrive at what the in-memory paths arrive at.
+    late WxScanner scanner;
+    setUp(() async => scanner = await WxScanner.create());
+    tearDown(() async => scanner.dispose());
+
+    test('decodes, and agrees with the same picture as pixels', () async {
+      final outcome = await scanner.scanPath('test/data/code.png');
+      expect(outcome.results, isNotEmpty);
+      expect(outcome.width, 148);
+      expect(outcome.height, 148);
+
+      final bytes = await File('test/data/code.png').readAsBytes();
+      expect(bytes, isNotEmpty);
+      expect(scanner.scanPathSync('test/data/code.png').results.first.text,
+          outcome.results.first.text);
+    });
+
+    test('a file that is not there is not a picture without a code in it',
+        () async {
+      // The whole point of the status: this must not come back as an empty
+      // outcome, which is what "no code in the picture" looks like.
+      await expectLater(
+        scanner.scanPath('test/data/no_such_file.png'),
+        throwsA(isA<PictureUnreadable>().having(
+            (e) => e.failure, 'failure', PictureReadFailure.unreadable)),
+      );
+    });
+
+    test('a file that is not an image says which of the two it is', () async {
+      final tmp = File('${Directory.systemTemp.path}/wxscan_not_an_image.png')
+        ..writeAsStringSync('not a picture, whatever the extension says');
+      addTearDown(() => tmp.deleteSync());
+      await expectLater(
+        scanner.scanPath(tmp.path),
+        throwsA(isA<PictureUnreadable>().having((e) => e.failure, 'failure',
+            PictureReadFailure.unsupportedFormat)),
+      );
     });
   });
 }

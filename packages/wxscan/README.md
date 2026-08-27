@@ -12,6 +12,11 @@ To decode a still image instead, use
 [`wxscan_core`](https://pub.dev/packages/wxscan_core), which exposes the same
 scanner to Dart.
 
+**[Try it in a browser](https://wilinz.github.io/wxscan/)** — the example
+application, built for the web and running the same Rust scanner as WebAssembly.
+It opens on a menu, and asks for the camera only if you choose live scanning;
+decoding a picture never needs one.
+
 ## Quick start
 
 ```sh
@@ -47,8 +52,12 @@ calling `initialize`:
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:wxscan/wxscan.dart';
 
-Future<Uint8List> _asset(String path) async =>
-    (await rootBundle.load(path)).buffer.asUint8List();
+Future<Uint8List> _asset(String path) async {
+  final data = await rootBundle.load(path);
+  // The offset and length are not optional: a bundled asset can be a view into
+  // a larger buffer, and `asUint8List()` with no arguments reads past it.
+  return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+}
 
 final info = await WxScan.initialize(
   resolution: WxResolution.p720,
@@ -87,6 +96,13 @@ while a result sheet is up.
 [`packages/wxscan/example`](example) is a working application doing all of the
 above, plus torch, zoom, decoding from the photo library and picking among
 several codes in one frame.
+
+**It is also where the user interface is.** This package draws the camera image
+and reports what was found; the viewfinder, the corners drawn over each decoded
+code, the picker for several codes in one frame, and the mapping from frame
+coordinates to screen coordinates that keeps drawing and tapping in agreement
+are all in [`example/lib/scan_page.dart`](example/lib/scan_page.dart), written
+to be read and copied rather than depended on.
 
 ## Results
 

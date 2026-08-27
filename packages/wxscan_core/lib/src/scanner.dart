@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:ffi' as ffi;
 import 'dart:isolate';
 import 'dart:typed_data';
@@ -110,7 +111,14 @@ class WxScanner implements ffi.Finalizable {
       var address = await worker.run(_CreateRequest(detectModel, srModel));
       if (address == 0) {
         // A model that will not load is not fatal; plain decoding still reads
-        // ordinary symbols.
+        // ordinary symbols. It is worth saying out loud, though: this used to
+        // happen silently, and a whole platform ran without its detector for
+        // weeks before anyone noticed the decoding rate had dropped.
+        developer.log(
+          'weights were refused by the native backend; '
+          'continuing without them, so detection is image processing only',
+          name: 'wxscan',
+        );
         address = await worker.run(const _CreateRequest(null, null));
       }
       if (address == 0) {
@@ -244,6 +252,36 @@ class WxScanner implements ffi.Finalizable {
       rotation,
       mirror,
     )));
+  }
+
+  /// Decodes a picture on disk, reading and decoding the file natively.
+  ///
+  /// This is the cheap way to scan a file: nothing is decoded on the Dart side
+  /// and no pixel buffer crosses an isolate boundary. A 12 megapixel
+  /// photograph is 48 MB as RGBA, and handing that to [scanPixels] copies it
+  /// once into the worker and again into native memory; here the file is read,
+  /// decoded and reduced to grayscale without any of it leaving native code.
+  ///
+  /// The orientation recorded in the file is applied, so a photograph taken
+  /// with the phone turned sideways comes back upright and its coordinates
+  /// match what was on screen.
+  ///
+  /// Throws [PictureUnreadable] when the file could not be read or is not a
+  /// format this build decodes — HEIC in particular, which wants the
+  /// platform's decoder and [scanPixels]. A picture that simply has no code in
+  /// it returns an empty [ScanOutcome] instead, which is a different thing.
+  Future<ScanOutcome> scanPath(String path) async {
+    _checkAlive();
+    final (status, outcome) =
+        await _track(_worker.run(_PathRequest(_handle.address, path)));
+    return _unwrapPath(path, status, outcome);
+  }
+
+  /// Decodes a picture on disk on the current isolate. See [scanPath].
+  ScanOutcome scanPathSync(String path) {
+    _checkAlive();
+    final (status, outcome) = _PathRequest(_handle.address, path).run();
+    return _unwrapPath(path, status, outcome);
   }
 
   /// Decodes a tightly packed grayscale image on the current isolate.
@@ -524,6 +562,48 @@ class _PixelsRequest extends _Request<ScanOutcome> {
           format.nativeValue,
         );
       });
+}
+
+/// Turns the native status into either an outcome or the exception it stands
+/// for. It arrives as a plain integer because an exception thrown inside the
+/// worker isolate reaches the caller with its type flattened away.
+ScanOutcome _unwrapPath(String path, int status, ScanOutcome outcome) =>
+    switch (status) {
+      0 => outcome,
+      2 => throw PictureUnreadable(path, PictureReadFailure.unreadable),
+      3 => throw PictureUnreadable(path, PictureReadFailure.unsupportedFormat),
+      // 1 is a null or non-UTF-8 argument, which from here can only be a path
+      // this library failed to hand over rather than anything the caller did.
+      _ => throw StateError('wxscan_core: scanning $path failed ($status)'),
+    };
+
+/// Reads a picture from a path natively, carrying the status back rather than
+/// throwing: the worker isolate flattens exception types on the way out.
+class _PathRequest extends _Request<(int, ScanOutcome)> {
+  const _PathRequest(this.handleAddress, this.path);
+
+  final int handleAddress;
+  final String path;
+
+  @override
+  (int, ScanOutcome) run() {
+    final cPath = path.toNativeUtf8();
+    final status = calloc<ffi.Int32>();
+    ffi.Pointer<WxScanResults> out = ffi.nullptr;
+    try {
+      out = wxscan_scan_path(
+        ffi.Pointer<WxScanScanner>.fromAddress(handleAddress),
+        cPath.cast(),
+        status,
+      );
+      if (out == ffi.nullptr) return (status.value, ScanOutcome.empty);
+      return (status.value, _readOutcome(out.ref));
+    } finally {
+      if (out != ffi.nullptr) wxscan_results_free(out);
+      calloc.free(status);
+      calloc.free(cPath);
+    }
+  }
 }
 
 /// Copies [data] into native memory, runs [scan], and reads the outcome,

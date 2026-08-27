@@ -1,0 +1,66 @@
+# Builds the example for the browser and publishes it as the live demo at
+# https://wilinz.github.io/wxscan/.
+#
+# Nothing native is compiled here. A web build asks the Dart build hooks for no
+# code assets, so they return without touching Rust or libtensorflowlite_c; the
+# four browser artifacts are the ones committed inside wxscan_core, placed by
+# `fetch_web`, and the weights are committed in the example.
+name: Live demo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and a newer push wins.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/wxscan/example
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned, and not below 3.44: earlier engines show a white screen on
+      # rotation in a browser, which there is no working around from Dart.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.1
+          channel: stable
+
+      - run: flutter pub get
+
+      # The browser artifacts are not Flutter assets — see the command's own
+      # documentation for why — so they are copied into web/ before the build.
+      - name: Place the browser artifacts
+        run: dart run wxscan_core:fetch_web
+
+      # A project page is served from a subdirectory, and every URL the built
+      # application asks for is relative to this. Without it the page loads and
+      # nothing else does.
+      - name: Build
+        run: flutter build web --release --base-href /wxscan/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: packages/wxscan/example/build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

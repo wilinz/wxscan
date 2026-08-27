@@ -33,8 +33,12 @@ flutter:
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:wxscan_core/wxscan_core.dart';
 
-Future<Uint8List> _asset(String path) async =>
-    (await rootBundle.load(path)).buffer.asUint8List();
+Future<Uint8List> _asset(String path) async {
+  final data = await rootBundle.load(path);
+  // The offset and length are not optional: a bundled asset can be a view into
+  // a larger buffer, and `asUint8List()` with no arguments reads past it.
+  return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+}
 
 final scanner = await WxScanner.create(
   detectModel: await _asset('assets/models/detect.tflite'),

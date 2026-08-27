@@ -173,6 +173,22 @@ class WxScanner {
     );
   }
 
+  /// Not available in a browser: there is no filesystem to read a path from.
+  ///
+  /// It exists so that code shared with the native scanner still compiles for
+  /// the web, and says what to do instead rather than failing to build. Fetch
+  /// or read the picture yourself and use [scanPixels].
+  Future<ScanOutcome> scanPath(String path) => throw UnsupportedError(
+        'wxscan_core: scanPath is not available in a browser, which has no '
+        'filesystem. Read the picture yourself and use scanPixels.',
+      );
+
+  /// Not available in a browser. See [scanPath].
+  ScanOutcome scanPathSync(String path) => throw UnsupportedError(
+        'wxscan_core: scanPath is not available in a browser, which has no '
+        'filesystem. Read the picture yourself and use scanPixels.',
+      );
+
   static Never _noSync(String name) => throw UnsupportedError(
         'wxscan_core: $name is not available in a browser. The scanner runs in '
         'a worker, so results arrive as a message; use the asynchronous '

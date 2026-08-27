@@ -151,3 +151,38 @@ class ScanOutcome {
   /// small or too blurred. A caller can zoom in rather than report a failure.
   bool get hasUndecodable => results.isEmpty && candidates.isNotEmpty;
 }
+
+/// Why a picture handed to `WxScanner.scanPath` never reached the scanner.
+///
+/// Neither of these is a picture with no code in it, which comes back as an
+/// empty [ScanOutcome] instead. Keeping the two apart is the point: a file the
+/// library never managed to read looks exactly like an empty picture if the
+/// distinction is dropped, and the reader is left with nothing to act on.
+enum PictureReadFailure {
+  /// The path could not be opened or read at all.
+  unreadable,
+
+  /// The bytes were read but are not an image the library decodes. PNG, JPEG
+  /// and GIF are; HEIC is not, being a system framework's business rather than
+  /// this library's. The platform's own decoder and `WxScanner.scanPixels`
+  /// will get further with one of those.
+  unsupportedFormat,
+}
+
+/// Thrown when a picture could not be read. See [PictureReadFailure].
+class PictureUnreadable implements Exception {
+  const PictureUnreadable(this.path, this.failure);
+
+  final String path;
+  final PictureReadFailure failure;
+
+  @override
+  String toString() => switch (failure) {
+        PictureReadFailure.unreadable =>
+          'PictureUnreadable: could not open or read $path',
+        PictureReadFailure.unsupportedFormat =>
+          'PictureUnreadable: $path is not an image this build can decode; '
+              'HEIC and anything else needing a system decoder must go '
+              'through the platform and WxScanner.scanPixels',
+      };
+}

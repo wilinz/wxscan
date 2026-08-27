@@ -12,6 +12,50 @@
 #include <stdlib.h>
 
 /**
+ * Why [`wxscan_scan_path`] returned nothing.
+ *
+ * A scan that finds no symbol is [`WxScanStatus::Ok`] with an empty result
+ * set, which is a different thing from a file that could not be read at all.
+ * Collapsing the two is how a picture the library never even saw comes back
+ * looking like a picture with no code in it.
+ */
+enum WxScanStatus
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  /**
+   * The file was read and scanned. The result set may still be empty.
+   */
+  Ok = 0,
+  /**
+   * A null pointer, a path that is not UTF-8, or a null scanner.
+   */
+  BadArgument = 1,
+  /**
+   * The path could not be opened or read.
+   */
+  Unreadable = 2,
+  /**
+   * The bytes were read but are not an image this build can decode. PNG,
+   * JPEG, BMP, GIF, WebP and TIFF are; HEIC is not, and nor is anything
+   * else needing a system framework.
+   *
+   * A photo library is mostly HEIC, but a picker generally does not hand it
+   * over that way: on iOS, `image_picker` sniffs the first byte, finds
+   * neither JPEG nor PNG nor GIF, and re-encodes to JPEG on its way to disk.
+   * The paths worth worrying about are the ones that come from somewhere
+   * else — a file shared into the application, say — and a caller that has
+   * to read those needs the platform's own decoder and
+   * [`wxscan_scan_pixels`].
+   */
+  UnsupportedFormat = 3,
+};
+#ifndef __cplusplus
+typedef int32_t WxScanStatus;
+#endif // __cplusplus
+
+/**
  * A scanner instance. Opaque to the C side.
  *
  * Scanning takes `&self`, but the underlying algorithm keeps mutable state
@@ -143,6 +187,32 @@ struct WxScanResults *wxscan_scan_frame(const struct WxScanScanner *scanner,
                                         int32_t row_stride,
                                         int32_t rotation,
                                         int32_t mirror_output);
+
+/**
+ * Read an image file and scan it.
+ *
+ * This exists so that a caller holding a path does not have to decode the
+ * picture itself and hand over the pixels: a 12 megapixel photograph is 48 MB
+ * as RGBA, and a caller that crosses a thread or an isolate boundary pays for
+ * that buffer more than once. Here the file is read, decoded and reduced to
+ * grayscale without any of it crossing the boundary.
+ *
+ * `status`, when not NULL, is set to a [`WxScanStatus`] saying what happened.
+ * Returns NULL for anything other than [`WxScanStatus::Ok`]. The result must
+ * be released with [`crate::results::wxscan_results_free`].
+ *
+ * The orientation recorded in the file is applied, so a photograph taken with
+ * the phone turned sideways is scanned upright and the coordinates come back
+ * in the picture as it is meant to be seen.
+ *
+ * # Safety
+ * `scanner` must come from [`crate::scanner::wxscan_scanner_new`], `path` must
+ * be a NUL terminated string, and `status`, when not NULL, must point to a
+ * writable [`WxScanStatus`].
+ */
+struct WxScanResults *wxscan_scan_path(const struct WxScanScanner *scanner,
+                                       const char *path,
+                                       WxScanStatus *status);
 
 /**
  * Link probe: returns 1 when the library is linked in correctly.

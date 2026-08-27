@@ -13,6 +13,17 @@ Then follow the quick start in [wxscan](packages/wxscan/README.md) or
 [wxscan_core](packages/wxscan_core/README.md) — install, weights, permissions
 and a first scan on one screen. The rest of this file is about the repository.
 
+**[Live demo](https://wilinz.github.io/wxscan/)** — the example application in a
+browser, running the same Rust scanner compiled to WebAssembly. Live scanning or
+a picture from your library, decoded entirely on your machine: nothing leaves
+the page, and the camera is asked for only if you go looking for it.
+
+The packages give you the camera image and the result of each frame. The screen
+around them — viewfinder, the corners drawn over each code, picking among
+several at once — is
+[`packages/wxscan/example`](packages/wxscan/example/lib/scan_page.dart), which
+is there to be read and copied.
+
 ## Why this one
 
 **It sees small and distant codes.** A neural network locates candidate symbols
