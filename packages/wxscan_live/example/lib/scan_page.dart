@@ -88,10 +88,6 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   /// while afterwards, the way automatic zooming does.
   DateTime _manualFocusAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// Frames in a row that have shown a box nothing could be read from. Kept
-  /// apart from the zoom's own streak, which is cleared whenever it zooms.
-  var _unreadStreak = 0;
-
   /// When focus was last pointed automatically, and where to.
   DateTime _lastAutoFocusAt = DateTime.fromMillisecondsSinceEpoch(0);
   Offset? _lastAutoFocusPoint;
@@ -392,13 +388,14 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   /// means, and a code too far off centre to zoom towards -- CameraX zooms
   /// about the centre and nowhere else -- can still be focused on.
   void _autoFocus(ScanOutcome frame) {
-    if (!frame.hasUndecodable) {
-      _unreadStreak = 0;
-      return;
-    }
-    // One frame can misdetect, the same bar the zoom sets itself.
-    if (++_unreadStreak < 3) return;
+    if (!frame.hasUndecodable) return;
 
+    // One frame is enough, where the zoom waits for three. The two are not
+    // the same bet: a zoom that fires on a misdetection throws the picture
+    // about and loses whatever the user was aiming at, while a focus that
+    // fires on one is at worst a lens moving to a place with nothing there,
+    // which the next frame corrects and which costs nothing meanwhile. Waiting
+    // three frames only delays the reading it was going to make possible.
     final now = DateTime.now();
     if (now.difference(_manualFocusAt) < _kManualFocusHold) return;
     if (now.difference(_lastAutoFocusAt) < _kAutoFocusInterval) return;
@@ -1355,8 +1352,10 @@ const double _kMaxAutoZoom = 4.0;
 /// already has it.
 const double _kAutoFocusMaxFraction = 0.45;
 
-/// How long automatic focusing stands aside after a tap.
-const Duration _kManualFocusHold = Duration(seconds: 4);
+/// How long automatic focusing stands aside after a tap. Long enough for the
+/// tap's own focus to settle and be seen, and no longer: pointing somewhere by
+/// hand is a hint about where to look, not an instruction to stop looking.
+const Duration _kManualFocusHold = Duration(seconds: 2);
 
 /// The soonest it will point focus somewhere again.
 const Duration _kAutoFocusInterval = Duration(milliseconds: 1500);

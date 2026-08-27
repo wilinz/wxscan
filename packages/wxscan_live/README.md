@@ -230,9 +230,12 @@ independently:
   behind it sharp. `focusAt` on the candidate's centre is often the whole
   difference, and it works on codes too far off centre to zoom towards.
 
-Require several frames to agree before acting on either. One frame can
-misdetect, and a scanner that lurches at every stray candidate is worse than
-one that waits three frames.
+The two want different patience. Make the **zoom** wait for several frames to
+agree: firing on a misdetection throws the picture about and loses whatever the
+user was aiming at. **Focus** can act on the first frame — at worst the lens
+moves to a place with nothing there, which the next frame corrects and which
+costs nothing meanwhile, while waiting only delays the reading it was going to
+make possible.
 
 **Freeze the picture before asking the user to pick.** When a frame decodes
 more than one code, the markers belong to *that* frame; with the preview still
