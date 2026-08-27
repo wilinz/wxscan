@@ -8,6 +8,9 @@ First release.
   AVFoundation on iOS and macOS. Frames go straight into the scanner without
   passing through Dart, and the preview is a Flutter texture backed by the same
   buffer.
+- In a browser the camera is `getUserMedia` and a `<video>`, where frames do
+  cross into Dart because there is no way for them not to. The files `wxscan`
+  needs served are placed by `dart run wxscan:fetch_web`.
 - Reports every symbol in a frame, with corner coordinates, so several codes in
   view can be told apart and picked between.
 - Torch, zoom and capture resolution, each readable as well as settable;

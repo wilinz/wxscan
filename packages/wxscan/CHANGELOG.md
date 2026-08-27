@@ -11,6 +11,11 @@ First release.
   the native library and bundles it, together with the TFLite C library, as
   code assets, so `dart run` and `dart test` work as well as Flutter does and
   there are no platform build files.
+- Runs in a browser too, as WebAssembly on a worker, against the same TFLite
+  weights and the same runtime as every other platform. The four files an
+  application serves are placed by `dart run wxscan:fetch_web`, which fetches
+  the compiled three from pinned releases rather than carrying them here; see
+  `doc/web_build.md`.
 - Scanning runs on a worker isolate owned by the scanner, so a stream costs one
   message round trip per frame rather than an isolate spawn.
 - `scanPixels` takes RGB, RGBA, BGR or BGRA and converts natively, so a caller
