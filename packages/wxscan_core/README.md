@@ -150,6 +150,10 @@ other platforms use, so a browser reads the same `.tflite` files. A 1080p frame
 takes about 220 ms against a native 135 ms, of which inference is 8 ms; the
 rest is the decoder, in the same proportion as native.
 
+The four files come to 1.8 MB, 660 KB over the wire compressed — the scanner
+462 KB and the runtime 1.3 MB, the latter carrying only the sixteen operators
+these two models use rather than the 150 a stock build registers.
+
 ## Platforms
 
 | Platform | Notes |
