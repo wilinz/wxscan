@@ -65,13 +65,15 @@ pixels in Dart.
 | You have | Call | Notes |
 |---|---|---|
 | A file on disk | `scanPath` | Reads and decodes natively; nothing is materialised in Dart |
+| An encoded picture in memory | `scanImage` | The file's bytes — a picked image, a download, an asset |
 | Decoded pixels | `scanPixels` | RGB, RGBA, BGR or BGRA, tightly packed |
 | Grayscale | `scanGray` | One byte per pixel, rows packed |
 | A camera frame | `scanFrame` | Adds a row stride, a rotation and `mirror` |
 
-**Prefer `scanPath` where you have a path.** A 12 megapixel photograph is 48 MB
-as RGBA; decoding it in Dart copies that into the worker isolate and again into
-native memory, and none of those copies buys anything.
+**Prefer `scanPath` or `scanImage` over decoding yourself.** A 12 megapixel
+photograph is 48 MB as RGBA; decoding it in Dart copies that into the worker
+isolate and again into native memory, and none of those copies buys anything.
+`scanImage` is the one to reach for in a browser, which has no paths at all.
 
 ```dart
 try {
@@ -91,20 +93,30 @@ That distinction is the point of the exception. A file nothing could open used
 to be indistinguishable from a picture with no code in it, and the two call for
 different things to be said.
 
-### HEIC and the platform decoder
+### Which pictures decode
 
-This build decodes PNG, JPEG, BMP, GIF, WebP and
-TIFF. HEIC — which is most of an iPhone's photo library — needs a system
-framework, and `scanPath` reports it as
-`PictureReadFailure.unsupportedFormat`. Fall back to the platform's own
-decoder, which reads everything the device can display:
+PNG, JPEG and GIF everywhere; WebP, BMP and TIFF everywhere except Apple, where
+the system reads them instead. HEIC — most of an iPhone's photo library — works
+on Apple, Android and in Safari. AVIF works on Apple and in a browser.
+
+The rule behind that: a decoder is either carried here, at a cost in size, or
+borrowed from the platform, at no cost at all. Apple lends 62 formats through
+ImageIO, RAW files included. Android lends nothing usable, so HEIC is compiled
+in. A browser decodes its own pictures, which is why the web build carries no
+decoders whatsoever.
+
+**[doc/image_formats.md](doc/image_formats.md)** has the full matrix, what each
+platform borrows and why, and how to lend one of your own.
+
+For a format nothing here reads, decode it with the platform's own API and pass
+the pixels to `scanPixels`:
 
 ```dart
 Future<ScanOutcome> scanAnyPicture(WxScanner scanner, String path) async {
   try {
     return await scanner.scanPath(path);
   } on PictureUnreadable {
-    // ui.instantiateImageCodec is Flutter's decoder, and it reads HEIC.
+    // Flutter's own decoder, which reads whatever the device can display.
     final codec = await ui.instantiateImageCodec(await File(path).readAsBytes());
     final image = (await codec.getNextFrame()).image;
     try {
@@ -125,10 +137,9 @@ Future<ScanOutcome> scanAnyPicture(WxScanner scanner, String path) async {
 }
 ```
 
-Most pickers hide this: `image_picker` on iOS sniffs the first bytes, finds
-neither JPEG nor PNG nor GIF, and re-encodes to JPEG on the way to disk. The
-paths worth guarding are the ones arriving from somewhere else — a file shared
-into the application, say.
+Worth far less than it used to be: the formats this reaches that the scanner
+does not are now the unusual ones — a JPEG XL, a RAW file on a platform other
+than Apple.
 
 ## Working with a scanner
 

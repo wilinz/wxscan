@@ -16,6 +16,11 @@ First release.
   application serves are placed by `dart run wxscan:fetch_web`, which fetches
   the compiled three from pinned releases rather than carrying them here; see
   `doc/web_build.md`.
+- Decodes pictures as well as pixels: `scanPath` for a file, `scanImage` for
+  bytes already in hand — a picked image, a download, or a browser, which has
+  no paths. PNG, JPEG and GIF everywhere; WebP, BMP and TIFF where the platform
+  lends nothing; HEIC on Apple, Android and in Safari. `doc/image_formats.md`
+  is the matrix, and the platform can be lent a decoder for the rest.
 - Scanning runs on a worker isolate owned by the scanner, so a stream costs one
   message round trip per frame rather than an isolate spawn.
 - `scanPixels` takes RGB, RGBA, BGR or BGRA and converts natively, so a caller

@@ -17,6 +17,29 @@
 //! So the decoder is compiled in instead. It costs binary size where the
 //! system decoders cost none, and buys back the two things above: every
 //! supported API level, and the same upright picture as everywhere else.
+//!
+//! # AVIF is not covered, and why
+//!
+//! AVIF is this same container with AV1 inside instead of HEVC, so it looks
+//! like a small addition and is not one: it needs a second decoder, for a
+//! codec with no usable pure-Rust implementation yet.
+//!
+//! `oxideav-avif` (MIT) parses the container and hands the bitstream to
+//! `oxideav-av1`, which answers
+//!
+//!     Unsupported("avif: AV1 decoder unavailable — oxideav-av1 clean-room
+//!     rebuild pending pixel-decode implementation")
+//!
+//! `rav1d` and `rusty_av1d` (BSD-2-Clause, ports of dav1d) do decode, and
+//! pairing one with `oxideav-avif`'s `obu_bytes` would work — at the cost of an
+//! AV1 decoder's size, asm that complicates cross-compiling, and two early
+//! crates joined at a seam.
+//!
+//! Left undone deliberately. Apple and browsers read AVIF already, and it is a
+//! format found on the web rather than in a camera roll, so the gap is a
+//! picture saved from a page and then scanned on Android or a desktop. When
+//! `oxideav-av1` implements pixel decode, adding it here is a few lines.
+//! `wxscan/doc/image_formats.md` has the full picture.
 
 use std::ffi::c_void;
 
