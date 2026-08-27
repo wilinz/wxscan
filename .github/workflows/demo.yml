@@ -40,10 +40,25 @@ jobs:
 
       - run: flutter pub get
 
-      # The browser artifacts are not Flutter assets — see the command's own
+      # The browser artifacts are not Flutter assets — see fetch_web's own
       # documentation for why — so they are copied into web/ before the build.
+      #
+      # Copied here rather than by `dart run wxscan:fetch_web`, which is what a
+      # reader is told to run. Running a Dart program builds the package's code
+      # assets first, and that means cargo, for the host, against path
+      # dependencies on sibling checkouts this runner does not have — several
+      # minutes of Rust for a web build that wants none of it. The command only
+      # copies these files, so the copy is done directly.
+      #
+      # The whole directory, not a list: a fifth artifact should arrive here
+      # without anyone remembering to add it, and the check below is what says
+      # so if the path ever moves.
       - name: Place the browser artifacts
-        run: dart run wxscan:fetch_web
+        run: |
+          mkdir -p web/wxscan
+          cp ../../wxscan/lib/src/web/assets/* web/wxscan/
+          test "$(ls web/wxscan | wc -l)" -ge 4
+          ls -l web/wxscan
 
       # A project page is served from a subdirectory, and every URL the built
       # application asks for is relative to this. Without it the page loads and

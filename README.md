@@ -61,6 +61,7 @@ TFLite library, so `dart test` runs the scanner with no Flutter involved at all.
 | iOS | 13.0+ | AVFoundation, 13.0+ |
 | macOS | 10.15+, arm64 | AVFoundation, 10.15+ |
 | Linux, Windows | x86_64, and arm64 on Linux | — |
+| Web | WebAssembly in a worker | `getUserMedia`, preview as a platform view |
 | Dart, no Flutter | `dart run` and `dart test` | — |
 
 32-bit x86 Android is not supported: LiteRT publishes no build for it, so an
