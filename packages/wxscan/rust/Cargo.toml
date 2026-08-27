@@ -30,14 +30,18 @@ jni = { version = "0.21", default-features = false }
 # API 30 against this package's 24, and the Java one needs a JNIEnv this path
 # does not have. Pure Rust, so it costs size rather than compatibility. Apple
 # platforms use ImageIO instead and do not pull this in.
-heic = "0.1"
+#
+# heif-oxide rather than the `heic` crate, which is faster to say but is
+# AGPL-3.0-or-commercial: linking it would make this library's Apache-2.0
+# undeliverable. This one and everything under it are MIT OR Apache-2.0.
+heif-oxide = "0.1"
 
 # The HEIC decoder is pure Rust and so compiles anywhere. It is built for the
 # tests on the development machine too, so that the one thing this package
 # cannot check on a phone — that the pixels come out upright and the symbol
 # survives — is checked somewhere.
 [dev-dependencies]
-heic = "0.1"
+heif-oxide = "0.1"
 
 [profile.release]
 opt-level = 3

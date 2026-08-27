@@ -27,21 +27,17 @@ extern "C" {
     fn free(p: *mut c_void);
 }
 
-/// Refuses a picture large enough to be a denial of service rather than a
-/// photograph.
+/// Bytes past which this is not a photograph anyone took.
 ///
-/// These bytes can come from anywhere — a file shared into the application, a
-/// download — and a HEIC header is a handful of integers that a decoder is
-/// otherwise willing to believe. 100 megapixels is several times any phone
-/// camera and a fiftieth of what the container can claim.
-fn limits() -> heic::Limits {
-    let mut limits = heic::Limits::default();
-    limits.max_width = Some(20_000);
-    limits.max_height = Some(20_000);
-    limits.max_pixels = Some(100_000_000);
-    limits.max_memory_bytes = Some(512 * 1024 * 1024);
-    limits
-}
+/// These can come from anywhere — a file shared into the application, a
+/// download — and a container header is a handful of integers a decoder is
+/// otherwise willing to believe. Checked before decoding rather than after,
+/// which is the only point at which it costs nothing.
+const MAX_INPUT_BYTES: usize = 64 * 1024 * 1024;
+
+/// Past this the decode is a denial of service rather than a picture. Several
+/// times any phone camera, and a fraction of what the container can claim.
+const MAX_PIXELS: usize = 100_000_000;
 
 /// Decodes `data` to upright RGBA, C-allocated for the caller to release.
 ///
@@ -49,29 +45,30 @@ fn limits() -> heic::Limits {
 /// stored 460x320 with the tag that says to turn it comes back 320x460, as it
 /// does on every other path.
 fn decode_rgba(data: &[u8]) -> Option<(*const u8, usize, usize)> {
-    let limits = limits();
-    let out = heic::DecoderConfig::new()
-        .decode_request(data)
-        .with_output_layout(heic::PixelLayout::Rgba8)
-        .with_limits(&limits)
-        .decode()
-        .ok()?;
+    if data.len() > MAX_INPUT_BYTES {
+        return None;
+    }
+    let image = heif_oxide::decode_bytes(data).ok()?;
 
-    let width = out.width as usize;
-    let height = out.height as usize;
-    if width == 0 || height == 0 || out.data.len() < width * height * 4 {
+    let width = image.width as usize;
+    let height = image.height as usize;
+    if width == 0 || height == 0 || width.checked_mul(height)? > MAX_PIXELS {
+        return None;
+    }
+
+    let rgba = image.to_rgba8();
+    let len = width.checked_mul(height)?.checked_mul(4)?;
+    if rgba.len() < len {
         return None;
     }
 
     // Into a C buffer, because it crosses into wxscan-ffi and comes back here
     // to be freed with nothing in between knowing its size.
-    let pixels = unsafe { calloc(out.data.len(), 1) };
+    let pixels = unsafe { calloc(len, 1) };
     if pixels.is_null() {
         return None;
     }
-    unsafe {
-        std::ptr::copy_nonoverlapping(out.data.as_ptr(), pixels as *mut u8, out.data.len())
-    };
+    unsafe { std::ptr::copy_nonoverlapping(rgba.as_ptr(), pixels as *mut u8, len) };
     Some((pixels as *const u8, width, height))
 }
 
