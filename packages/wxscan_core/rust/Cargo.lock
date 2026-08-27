@@ -632,7 +632,6 @@ version = "0.1.0"
 dependencies = [
  "cvlite",
  "wxing",
- "wxscan-models",
  "wxscan-tflite",
 ]
 
@@ -645,10 +644,6 @@ dependencies = [
  "encoding_rs",
  "wxscan",
 ]
-
-[[package]]
-name = "wxscan-models"
-version = "0.1.0"
 
 [[package]]
 name = "wxscan-tflite"

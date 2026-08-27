@@ -27,7 +27,7 @@ enum Registry {
 enum Repo {
   cvlite('cvlite', 'General-purpose OpenCV imgproc functions'),
   wxing('wxing', 'General-purpose QR decoding, the ZXing fork'),
-  rust('wxscan-rs', 'The WeChat algorithm: wxscan, -tflite, -models, -ffi'),
+  rust('wxscan-rs', 'The WeChat algorithm: wxscan, -tflite, -ffi'),
   dart('wxscan', 'The Flutter plugin: wxscan_core, wxscan');
 
   const Repo(this.dirName, this.summary);
@@ -83,8 +83,9 @@ const List<Target> releasePlan = [
     deps: ['cvlite'],
   ),
   // ---- the algorithm workspace -----------------------------------------
-  // Neither of these two depends on the other; they are only ordered before
-  // `wxscan`, which optionally depends on both.
+  // The weights are not here and are in no crate at all; they live in the
+  // wxscan-weights repository, because a registry is the wrong place to
+  // version two megabytes of data most callers already have.
   Target(
     name: 'wxscan-tflite',
     registry: Registry.cargo,
@@ -92,17 +93,11 @@ const List<Target> releasePlan = [
     dir: 'crates/wxscan-tflite',
   ),
   Target(
-    name: 'wxscan-models',
-    registry: Registry.cargo,
-    repo: Repo.rust,
-    dir: 'crates/wxscan-models',
-  ),
-  Target(
     name: 'wxscan',
     registry: Registry.cargo,
     repo: Repo.rust,
     dir: 'crates/wxscan',
-    deps: ['cvlite', 'wxing', 'wxscan-tflite', 'wxscan-models'],
+    deps: ['cvlite', 'wxing', 'wxscan-tflite'],
   ),
   Target(
     name: 'wxscan-ffi',

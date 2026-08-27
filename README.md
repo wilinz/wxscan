@@ -18,7 +18,7 @@ this one during development:
 ```
 Documents/
 ├── wxscan/       this repository
-└── wxscan-rs/    cvlite, wxing, wxscan, wxscan-models, wxscan-ffi
+└── wxscan-rs/    cvlite, wxing, wxscan, wxscan-ffi
 ```
 
 ## How the native library is built

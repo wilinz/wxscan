@@ -46,12 +46,14 @@ Split along what each piece is *for*, not along what artifact it produces:
 |---|---|---|
 | `cvlite` | OpenCV imgproc port, zero dependencies | no |
 | `wxing` | the ZXing fork, QR decoding | no |
-| `wxscan-rs` | `wxscan`, `-tflite`, `-models`, `-ffi` | yes |
+| `wxscan-rs` | `wxscan`, `-tflite`, `-ffi` | yes |
 | `wxscan` | `wxscan_core`, `wxscan` (Dart) | yes |
 
-The four crates in `wxscan-rs` are four facets of one thing — the weights, the
-backend, the orchestration, the C ABI — and have to ship at one version, so
-they stay in one workspace. The two general-purpose crates are useful to anyone
+The three crates in `wxscan-rs` are three facets of one thing — the backend,
+the orchestration, the C ABI — and have to ship at one version, so they stay in
+one workspace. The weights are in none of them; they live in
+[wxscan-weights](https://github.com/wilinz/wxscan-weights), because a registry
+is the wrong place to version two megabytes that most callers already have. The two general-purpose crates are useful to anyone
 and stand alone.
 
 All five checkouts, plus `wxscan-dev`, sit side by side under one parent
@@ -60,14 +62,14 @@ directory; the kit finds that parent by walking up from wherever it is run.
 ## The order
 
 ```
-crate:cvlite → crate:wxing → crate:wxscan-tflite → crate:wxscan-models
+crate:cvlite → crate:wxing → crate:wxscan-tflite
              → crate:wxscan → crate:wxscan-ffi
              → pub:wxscan_core → pub:wxscan
 ```
 
 This is not a preference. `packages/wxscan_core/rust` depends on `wxscan-ffi`
 and `wxscan`, and transitively on `cvlite` and `wxing`. Nobody installing from
-pub.dev has those checkouts, so the build hook cannot build until all six
+pub.dev has those checkouts, so the build hook cannot build until all five
 crates are on crates.io and the dependencies are versions instead of paths.
 
 ## Versions
@@ -110,7 +112,7 @@ dart run publish_kit check
 dart run publish_kit update-version
 # commit, tag, push both repos by hand
 dart run publish_kit publish --allow-dirty --only crate:cvlite \
-  --only crate:wxing --only crate:wxscan-tflite --only crate:wxscan-models \
+  --only crate:wxing --only crate:wxscan-tflite \
   --only crate:wxscan --only crate:wxscan-ffi
 dart run publish_kit release-deps
 dart run publish_kit publish          # the two pub packages
