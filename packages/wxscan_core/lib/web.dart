@@ -1,9 +1,11 @@
 /// Configuration the browser build needs, and nothing the other platforms do.
 ///
-/// This package ships no assets: it is a plain Dart package, and declaring
-/// Flutter assets would make it a Flutter one, which would cost `dart run` and
-/// `dart test`. So an application serves the browser build's files itself and,
-/// if they are not where this package looks by default, says where they are.
+/// The browser build's four files ship inside this package, and
+/// `dart run wxscan_core:fetch_web` copies them into `web/wxscan`, where the
+/// package looks by default. They are files rather than declared assets
+/// because declaring Flutter assets would make this a Flutter package, which
+/// would cost `dart run` and `dart test`. This says where they are when they
+/// are somewhere else.
 ///
 /// ```dart
 /// // Before creating a scanner, and only on the web.
@@ -14,12 +16,12 @@
 /// ));
 /// ```
 ///
-/// The files are `wxscan_worker.js`, which is
-/// `lib/src/web/assets/wxscan_worker.js` in this package, and three built in
-/// the wxscan-rs repository: `wxscan_wasm.wasm` from `crates/wxscan-wasm`, and
-/// the `wxscan_tflite.js` and `wxscan_tflite.wasm` pair from
-/// `tools/tflite-wasm`. Only the loader of that pair takes a URL; it fetches
-/// the module beside itself.
+/// Of the four, `wxscan_worker.js` is this package's own; the rest are built
+/// in the wxscan-rs repository — `wxscan_wasm.wasm` by `crates/wxscan-wasm`,
+/// and the `wxscan_tflite.js` and `wxscan_tflite.wasm` pair by
+/// `tools/tflite-wasm`. Only the loader of that pair takes a URL, since it
+/// fetches the module beside itself, and the two must keep their names: the
+/// loader has its module's file name compiled into it.
 library;
 
 import 'src/web/scanner_web.dart';

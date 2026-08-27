@@ -128,13 +128,22 @@ page. `WxScanner` is the same class with the same methods; what differs:
 - `scanGraySync` and the other `*Sync` methods throw `UnsupportedError`. The
   engine answers by message from a worker, so there is nothing to return in the
   same call.
-- Four files have to be served by the application, since this package ships no
-  assets: `lib/src/web/assets/wxscan_worker.js` from here, and
-  `wxscan_wasm.wasm`, `wxscan_tflite.js` and `wxscan_tflite.wasm`, which
-  `crates/wxscan-wasm` and `tools/tflite-wasm` build in
-  [wxscan-rs](https://github.com/wilinz/wxscan-rs). Put them in `web/wxscan/`
-  and nothing needs configuring; put them elsewhere and say so with
-  `configureWxScanWeb` from `package:wxscan_core/web.dart`.
+- Four files have to be served by the application. They ship inside this
+  package, and one command copies them out:
+
+  ```sh
+  dart run wxscan_core:fetch_web        # into web/wxscan
+  ```
+
+  Nothing else needs configuring, since that is where the package looks. For
+  another directory, pass `--into` and say where with `configureWxScanWeb` from
+  `package:wxscan_core/web.dart`.
+
+  They are files rather than declared assets because declaring Flutter assets
+  would make this a Flutter package, and `dart run` and `dart test` would stop
+  working. `crates/wxscan-wasm` and `tools/tflite-wasm` in
+  [wxscan-rs](https://github.com/wilinz/wxscan-rs) build the three WebAssembly
+  ones; `--from` takes them from such a build instead of from here.
 
 Inference is TensorFlow Lite with the XNNPACK delegate, the same runtime the
 other platforms use, so a browser reads the same `.tflite` files. A 1080p frame
