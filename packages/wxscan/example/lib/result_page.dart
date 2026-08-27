@@ -15,11 +15,18 @@ class ResultPage extends StatelessWidget {
       appBar: AppBar(
         title: Text(results.length > 1 ? 'Results (${results.length})' : 'Result'),
       ),
-      body: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: results.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 12),
-        itemBuilder: (context, i) => _ResultCard(result: results[i]),
+      // Held to a readable measure: a decoded URL stretched across a desktop
+      // window is one long line the eye cannot get back from.
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: results.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
+            itemBuilder: (context, i) => _ResultCard(result: results[i]),
+          ),
+        ),
       ),
     );
   }

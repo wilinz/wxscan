@@ -4,10 +4,11 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:wxscan/wxscan.dart';
 
+import 'pick_overlay.dart';
+import 'pick_page.dart';
 import 'result_page.dart';
 import 'scanner.dart';
 
@@ -77,6 +78,35 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   /// When picking was left. Automatic zooming holds off just afterwards, or
   /// the user sees a zoom right after several codes flashed by.
   DateTime _pickExitAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Where the last tap to focus landed, in the shell's coordinates, and the
+  /// timer that takes the reticle away again. Null when nothing is showing.
+  Offset? _focusPoint;
+  Timer? _focusTimer;
+
+  /// When focus was last pointed by hand. Automatic focusing keeps out for a
+  /// while afterwards, the way automatic zooming does.
+  DateTime _manualFocusAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Frames in a row that have shown a box nothing could be read from. Kept
+  /// apart from the zoom's own streak, which is cleared whenever it zooms.
+  var _unreadStreak = 0;
+
+  /// When focus was last pointed automatically, and where to.
+  DateTime _lastAutoFocusAt = DateTime.fromMillisecondsSinceEpoch(0);
+  Offset? _lastAutoFocusPoint;
+
+  /// The ratio the zoom is walking towards, and the timer walking it there.
+  /// See [_stepZoom].
+  double _zoomTarget = 1;
+  Timer? _zoomDriver;
+  var _zoomBusy = false;
+
+  /// How much of full speed the walk is up to, 0 to 1, and when it last
+  /// stepped. Together they make the walk neither start nor stop with a jerk;
+  /// see [_stepZoom].
+  double _zoomRate = 0;
+  DateTime _zoomSteppedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
 
   @override
@@ -155,6 +185,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     if (frame.results.isEmpty) {
       _multiWaitSince = null;
       _autoZoom(frame);
+      _autoFocus(frame);
       return;
     }
     // Decoded, so the zoom has done its job and is wound back.
@@ -258,9 +289,6 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     // Only act after several frames agree; one frame can misdetect.
     if (++_undecodableStreak < 3) return;
 
-    final now = DateTime.now();
-    if (now.difference(_lastZoomAt) < const Duration(milliseconds: 700)) return;
-
     final box = _largestCandidateBox(frame);
     if (box == null) return;
     final frac = math.max(box.w, box.h);
@@ -272,24 +300,144 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     final want = (_zoom * rel)
         .clamp(1.0, math.min(_maxZoom, _kMaxAutoZoom))
         .toDouble();
-    // Too small a gain is not worth it; a jolt of the picture is worse than
-    // no zoom.
-    if (want <= _zoom * 1.15) return;
+    // Nothing worth walking towards.
+    if (want <= _zoom * 1.02) return;
 
-    _lastZoomAt = now;
-    _undecodableStreak = 0;
-    WxScan.setZoom(want).then((actual) {
-      if (mounted) setState(() => _zoom = actual);
+    // Only the target is set here. Every frame revises it, and as the picture
+    // closes in the code grows, `frac` with it and the target comes down to
+    // meet the ratio — so this settles itself rather than overshooting.
+    _zoomTarget = want;
+    _startZoomDriver();
+  }
+
+  /// Walks the zoom towards [_zoomTarget].
+  ///
+  /// Setting the ratio straight to the target moves the picture in one jump,
+  /// which is what a scanner looks like when it is guessing, and it throws the
+  /// code the user was holding steady somewhere else. But an even walk in
+  /// fixed steps is no better: ten visible steps a second is a slideshow, and
+  /// it starts and stops dead.
+  ///
+  /// So: a step every [_kZoomStepEvery], each one closing a fixed *fraction*
+  /// of what is left. That decelerates into the target on its own, the way a
+  /// hand does. Two things shape it further — the arithmetic is done on the
+  /// logarithm of the ratio, since zoom is multiplicative and equal steps are
+  /// only equal to the eye there; and the speed is ramped in over
+  /// [_kZoomRampIn] rather than being at full rate from the first step, which
+  /// is what made the start read as a lurch.
+  void _startZoomDriver() {
+    if (_zoomDriver != null) return;
+    _zoomRate = 0;
+    _zoomSteppedAt = DateTime.now();
+    _zoomDriver = Timer.periodic(_kZoomStepEvery, (_) => _stepZoom());
+  }
+
+  void _stopZoomDriver() {
+    _zoomDriver?.cancel();
+    _zoomDriver = null;
+    _zoomRate = 0;
+  }
+
+  void _stepZoom() {
+    // One call at a time: the ratio that took effect comes back from the
+    // device, and stepping from a stale one walks past the target.
+    if (_zoomBusy) return;
+    final from = _zoom;
+    if ((_zoomTarget / from - 1).abs() < 0.005) {
+      _stopZoomDriver();
+      return;
+    }
+
+    // Measured rather than assumed: a timer under load fires late, and a step
+    // sized for 33ms taken after 90 would crawl.
+    final now = DateTime.now();
+    final dt = now.difference(_zoomSteppedAt).inMicroseconds / 1e6;
+    _zoomSteppedAt = now;
+    if (dt <= 0) return;
+
+    _zoomRate =
+        math.min(1.0, _zoomRate + dt / (_kZoomRampIn.inMilliseconds / 1000));
+    // The fraction of the remaining distance a step of this length closes.
+    // Written as an exponential so the walk looks the same however often the
+    // timer actually fires.
+    final k = 1 - math.exp(-dt / (_kZoomSettle.inMilliseconds / 1000));
+
+    final logFrom = math.log(from);
+    final next =
+        math.exp(logFrom + (math.log(_zoomTarget) - logFrom) * k * _zoomRate);
+
+    _zoomBusy = true;
+    WxScan.setZoom(next).then((actual) {
+      _zoomBusy = false;
+      if (!mounted) return;
+      setState(() => _zoom = actual);
+      // The device would go no further. Asking again every step would be a
+      // platform call thirty times a second for nothing.
+      if ((actual - from).abs() < 0.0005 && _zoomRate >= 1) {
+        _zoomTarget = actual;
+        _stopZoomDriver();
+      }
     });
+  }
+
+  /// Focuses on a code that is seen but will not decode.
+  ///
+  /// A small code is usually a soft one as well: it sits somewhere inside the
+  /// frame, and continuous auto-focus, which weighs the middle of the picture,
+  /// holds the wall behind it sharp instead. Pointing focus at the box is
+  /// often the whole difference between a code that comes out and one that
+  /// does not, and it costs nothing where the code was sharp already.
+  ///
+  /// Kept apart from [_autoZoom]: the two answer the same trouble by different
+  /// means, and a code too far off centre to zoom towards -- CameraX zooms
+  /// about the centre and nowhere else -- can still be focused on.
+  void _autoFocus(ScanOutcome frame) {
+    if (!frame.hasUndecodable) {
+      _unreadStreak = 0;
+      return;
+    }
+    // One frame can misdetect, the same bar the zoom sets itself.
+    if (++_unreadStreak < 3) return;
+
+    final now = DateTime.now();
+    if (now.difference(_manualFocusAt) < _kManualFocusHold) return;
+    if (now.difference(_lastAutoFocusAt) < _kAutoFocusInterval) return;
+
+    final box = _largestCandidateBox(frame);
+    if (box == null) return;
+    // Only the small ones. A code filling much of the picture is already
+    // where continuous focus is looking, and pointing at it again would only
+    // set the lens hunting.
+    final frac = math.max(box.w, box.h);
+    if (frac <= 0 || frac >= _kAutoFocusMaxFraction) return;
+
+    // A code sitting still is focused on once, not every second and a half:
+    // each request starts the lens moving again, and a picture that keeps
+    // softening and sharpening is worse than one that settled.
+    final point = Offset(box.cx, box.cy);
+    final last = _lastAutoFocusPoint;
+    if (last != null &&
+        (point - last).distance < _kAutoFocusMoved &&
+        now.difference(_lastAutoFocusAt) < _kAutoFocusRepeat) {
+      return;
+    }
+
+    final turns = _previewSize?.quarterTurns ?? 0;
+    final (x, y) = _previewFraction(box.cx, box.cy, turns);
+    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+
+    _lastAutoFocusAt = now;
+    _lastAutoFocusPoint = point;
+    unawaited(WxScan.focusAt(x, y));
   }
 
   void _resetZoom() {
     _undecodableStreak = 0;
     _emptyStreak = 0;
-    if (_zoom == 1) return;
-    _zoom = 1;
-    WxScan.setZoom(1);
-    if (mounted) setState(() {});
+    if (_zoomTarget == 1 && _zoom == 1) return;
+    // Back out the way it came in, rather than dropping to 1x in one frame.
+    _zoomTarget = 1;
+    _startZoomDriver();
   }
 
   /// The largest candidate box, with coordinates normalised to [0,1] in each
@@ -359,9 +507,60 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     if ((want - _zoom).abs() < 0.02) return;
     _lastZoomAt = now;
     _manualZoomAt = now;
+    // The hand is on it: the walk has nothing left to do, and would otherwise
+    // pull against the fingers.
+    _stopZoomDriver();
+    _zoomTarget = want;
     WxScan.setZoom(want).then((actual) {
       if (mounted) setState(() => _zoom = actual);
     });
+  }
+
+  /// Tap to focus.
+  ///
+  /// The preview is drawn by turning the picture through
+  /// [WxPreviewSize.quarterTurns] and covering the box with what comes out, so
+  /// a tap is brought back the other way: undo the cover fit against the
+  /// turned size, then undo the turn, which leaves the fraction of the
+  /// picture the plugin's own coordinates are in.
+  ///
+  /// A tap outside the picture — the bands a cover fit crops away are off the
+  /// box, but a letterboxed one leaves them on it — is dropped rather than
+  /// clamped, so the reticle never appears somewhere the camera is not
+  /// looking.
+  void _onFocusTap(Offset tap, Size box) {
+    final size = _previewSize;
+    if (size == null || !WxScan.isInitialized) return;
+
+    final m = _coverFit(box, size.rotatedWidth, size.rotatedHeight);
+    final rx = (tap.dx - m.dx) / (size.rotatedWidth * m.scale);
+    final ry = (tap.dy - m.dy) / (size.rotatedHeight * m.scale);
+    if (rx < 0 || rx > 1 || ry < 0 || ry > 1) return;
+
+    final (x, y) = _previewFraction(rx, ry, size.quarterTurns);
+
+    _manualFocusAt = DateTime.now();
+    _focusTimer?.cancel();
+    setState(() => _focusPoint = tap);
+    _focusTimer = Timer(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _focusPoint = null);
+    });
+    unawaited(WxScan.focusAt(x, y));
+  }
+
+  /// The layer that takes those taps, under the bars so their buttons are
+  /// still buttons, and under the picker so picking a code still wins.
+  Widget _buildFocusLayer() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final box = Size(constraints.maxWidth, constraints.maxHeight);
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTapUp: (d) => _onFocusTap(d.localPosition, box),
+          child: const SizedBox.expand(),
+        );
+      },
+    );
   }
 
   /// The layer for picking among several codes: tap a marker to open that
@@ -373,7 +572,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapDown: (d) {
-            final hit = _hitTest(d.localPosition, size, frame);
+            final hit =
+                pickHitTest(d.localPosition, BoxFit.cover, size, frame);
             if (hit != null) {
               _openResults([hit]);
             } else {
@@ -398,72 +598,13 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
               // or taps and markers drift apart systematically.
               CustomPaint(
                 size: Size.infinite,
-                painter: _PickPainter(frame: frame),
-              ),
-              // Leaving picking: the back button in the corner. Tapping
-              // elsewhere and the system back gesture are not enough on their
-              // own -- nobody guesses the first, and the second is Android's
-              // alone and does not exist on iOS or macOS.
-              Positioned(
-                left: 4,
-                top: 0,
-                child: SafeArea(
-                  child: IconButton(
-                    onPressed: _exitPick,
-                    tooltip: 'Back',
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black54,
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: const Icon(Icons.arrow_back),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                top: 0,
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 56),
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Text(
-                          'Tap a marker to open that code',
-                          style:
-                              TextStyle(color: Colors.white, fontSize: 13),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                painter: PickPainter(frame: frame, fit: BoxFit.cover),
               ),
             ],
           ),
         );
       },
     );
-  }
-
-  /// The code nearest the tap; beyond the tolerance it counts as a miss.
-  ScanResult? _hitTest(Offset tap, Size size, ScanOutcome frame) {
-    ScanResult? best;
-    var bestDist = double.infinity;
-    for (final r in frame.results) {
-      if (r.corners.isEmpty) continue;
-      final d = (_codeCenter(r, size, frame) - tap).distance;
-      if (d < bestDist) {
-        bestDist = d;
-        best = r;
-      }
-    }
-    return bestDist <= _kPickRadius * 2 ? best : null;
   }
 
   /// Cycles the capture resolution: 720p, 1080p, highest, and round again.
@@ -491,24 +632,55 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   /// Decoding from the photo library, through the same Rust path the camera
   /// uses.
   Future<void> _pickFromGallery() async {
-    final picker = ImagePicker();
-    final file = await picker.pickImage(source: ImageSource.gallery);
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    final outcome = await Scanner.scanImageBytes(bytes);
-    if (!mounted) return;
-    if (outcome.results.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No QR code found in the image')),
-      );
+    final PickedPicture? picked;
+    try {
+      picked = await Scanner.pickAndScan();
+    } on UnreadableImage {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('That file is not a picture this device can read'),
+        ));
+      }
+      return;
+    }
+    // Aliased so the closure below can see it as non-null: a final assigned
+    // inside a try is not promoted into one.
+    if (picked == null || !mounted) return;
+    final found = picked.outcome;
+    if (found.results.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(found.candidates.isEmpty
+            ? 'No QR code found in that picture'
+            : 'A code was spotted but could not be read — it may be too small '
+                'in the picture, or too blurred'),
+      ));
       return;
     }
     _navigating = true;
     await WxScan.setScanning(false);
     if (!mounted) return;
+    // Several codes in one picture, as on the home screen: the picture is
+    // shown with a marker on each, and the reader says which.
+    var results = found.results;
+    if (results.length > 1) {
+      final image = await picked.file.readAsBytes();
+      if (!mounted) return;
+      final chosen = await Navigator.of(context).push<ScanResult>(
+        MaterialPageRoute<ScanResult>(
+          builder: (_) => PickPage(image: image, outcome: found),
+        ),
+      );
+      if (chosen == null) {
+        _navigating = false;
+        await WxScan.setScanning(true);
+        return;
+      }
+      results = [chosen];
+      if (!mounted) return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ResultPage(results: outcome.results),
+        builder: (_) => ResultPage(results: results),
       ),
     );
     _navigating = false;
@@ -530,6 +702,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _sub?.cancel();
     _sizeSub?.cancel();
+    _focusTimer?.cancel();
+    _zoomDriver?.cancel();
     WxScan.dispose();
     super.dispose();
   }
@@ -554,22 +728,33 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         behavior: HitTestBehavior.deferToChild,
         onScaleStart: _onScaleStart,
         onScaleUpdate: _onScaleUpdate,
-        child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (_camera != null) _buildPreview(_camera!),
-          const _ScanFrameOverlay(),
-          if (_lastFrame != null && _camera != null && _pickFrame == null)
-            CustomPaint(
-              painter: _CodeMarkerPainter(frame: _lastFrame!),
-            ),
-          // Below the top and bottom bars, or its opaque hit-testing would
-          // swallow taps meant for those buttons.
-          if (_pickFrame != null) _buildPicker(_pickFrame!),
-          _buildTopBar(),
-          if (_error != null) _buildError(_error!),
-          _buildBottomBar(),
-        ],
+        child: _Shell(
+          child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (_camera != null) _buildPreview(_camera!),
+            // Decoration, and nothing that can be pressed. Without this a
+            // CustomPaint takes every tap that reaches it: RenderCustomPaint
+            // answers hitTestSelf with true unless its painter says otherwise,
+            // so the viewfinder alone would swallow the taps meant for the
+            // layer below it.
+            const IgnorePointer(child: _ScanLineOverlay()),
+            if (_lastFrame != null && _camera != null && _pickFrame == null)
+              IgnorePointer(
+                child: CustomPaint(
+                  painter: _CodeMarkerPainter(frame: _lastFrame!),
+                ),
+              ),
+            if (_camera != null) _buildFocusLayer(),
+            if (_focusPoint != null) _FocusReticle(at: _focusPoint!),
+            // Below the top and bottom bars, or its opaque hit-testing would
+            // swallow taps meant for those buttons.
+            if (_pickFrame != null) _buildPicker(_pickFrame!),
+            _buildTopBar(),
+            if (_error != null) _buildError(_error!),
+            _buildBottomBar(),
+          ],
+          ),
         ),
       ),
       ),
@@ -604,32 +789,123 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   }
 
   Widget _buildTopBar() {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            const Text(
-              'Scan',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const Spacer(),
-            // The resolution step, raised by a tap. Useful when a dense
-            // code will not come out.
-            _chip(
-              _resolution.label,
-              onTap: _camera == null ? null : _cycleResolution,
-              icon: Icons.hd_outlined,
-            ),
-            const SizedBox(width: 8),
-            _chip(_nnEnabled ? 'CNN detection on' : 'Image processing only'),
-          ],
+    // Aligned rather than dropped straight into the stack: an expanded stack
+    // hands its children tight constraints, and a row told it is as tall as
+    // the screen centres its contents down the middle of it.
+    return Align(
+      alignment: Alignment.topCenter,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: _pickFrame != null ? _buildPickBar() : _buildScanBar(),
         ),
       ),
+    );
+  }
+
+  /// The top bar while picking: how to leave, and what to do.
+  ///
+  /// Both used to live inside the picker itself, where the back button landed
+  /// on top of the title and the bottom bar went on telling the user to put a
+  /// code in the frame while this one told them to tap a marker. One bar at a
+  /// time says one thing.
+  Widget _buildPickBar() {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: _exitPick,
+          tooltip: 'Back',
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.black54,
+            foregroundColor: Colors.white,
+          ),
+          icon: const Icon(Icons.arrow_back),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(
+          child: _Hint('Tap a marker to open that code'),
+        ),
+      ],
+    );
+  }
+
+  /// The height of the bar's first line, which is the back button's: an
+  /// IconButton is a touch target before it is an icon, and everything beside
+  /// it is centred against that rather than hung from the top.
+  static const double _barLine = 48;
+
+  Widget _buildScanBar() {
+    return Row(
+          // Top-aligned, so a second run of chips grows downwards instead of
+          // pushing the button and the title off the line they share. Each
+          // side centres itself within [_barLine] instead.
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: _barLine,
+              child: Row(
+                children: [
+                  // Reached by a push from the home screen, so there has to be
+                  // a way back that is not the system gesture: iOS and macOS
+                  // do not have Android's, and nobody guesses at a tap on the
+                  // picture.
+                  IconButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    tooltip: 'Back',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black38,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.arrow_back),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Scan',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            // A narrow phone cannot hold the title and both chips on one
+            // line, so they wrap under each other rather than overflowing.
+            // One run sits centred on the button's line; two make the box
+            // taller and fill it.
+            Expanded(
+              // ConstrainedBox and a shrink-wrapping Align, not a Container
+              // with an alignment: that one grows to whatever it is offered,
+              // and what it is offered here is the height of the screen, which
+              // put the chips down in the middle of the picture.
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: _barLine),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  heightFactor: 1,
+                  child: Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      // The resolution step, raised by a tap. Useful when a
+                      // dense code will not come out.
+                      _chip(
+                        _resolution.label,
+                        onTap: _camera == null ? null : _cycleResolution,
+                        icon: Icons.hd_outlined,
+                      ),
+                      _chip(_nnEnabled
+                          ? 'CNN detection on'
+                          : 'Image processing only'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
     );
   }
 
@@ -691,20 +967,23 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   }
 
   Widget _buildBottomBar() {
+    // The top bar is doing the talking while picking, and the torch and the
+    // gallery are no use with a frozen frame on screen.
+    if (_pickFrame != null) return const SizedBox.shrink();
     return Align(
       alignment: Alignment.bottomCenter,
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.only(bottom: 40),
+          // A phone in landscape has barely any room below the viewfinder,
+          // and 40 of it would put the buttons off the bottom.
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.sizeOf(context).height < 560 ? 12 : 40),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                _zoom > 1
-                    ? '${_zoom.toStringAsFixed(1)}x - pinch to zoom'
-                    : 'Put the QR code in the frame to scan it',
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
-              ),
+              _Hint(_zoom > 1
+                  ? '${_zoom.toStringAsFixed(1)}x - pinch to zoom'
+                  : 'Put the QR code in the frame to scan it'),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -734,19 +1013,243 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   }
 }
 
-/// The viewfinder: four corners and a sweeping line.
-class _ScanFrameOverlay extends StatefulWidget {
-  const _ScanFrameOverlay();
+/// Holds the scanner to a phone-shaped panel on a screen too big for it.
+///
+/// Everything in the scanner is laid out against one box: the preview covers
+/// it, the viewfinder is drawn from its shortest side, and the markers and
+/// their hit-testing map frame coordinates onto it. So the whole stack is
+/// constrained together, never the preview alone — narrowing one layer and not
+/// the others would put the markers somewhere the codes are not.
+///
+/// A phone is left alone. A desktop window is not a phone: filling it would
+/// crop most of a 4:3 or 16:9 camera away and grow the viewfinder to the size
+/// of a dinner plate.
+class _Shell extends StatelessWidget {
+  const _Shell({required this.child});
+
+  final Widget child;
+
+  /// Below either of these the screen is a phone's, or a window small enough
+  /// to be treated as one. A phone in landscape is short, not large, which is
+  /// why the height has a say.
+  static const double _wideEnough = 720;
+  static const double _tallEnough = 600;
+
+  /// Width over height of the panel: a tall phone, which is the shape the
+  /// scanner was drawn for.
+  static const double _panelAspect = 0.52;
 
   @override
-  State<_ScanFrameOverlay> createState() => _ScanFrameOverlayState();
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth, h = constraints.maxHeight;
+        if (w < _wideEnough || h < _tallEnough) return child;
+
+        final panelHeight = math.min(h - 48, 900.0);
+        final panelWidth = math.min(w - 48, panelHeight * _panelAspect);
+        return Center(
+          child: SizedBox(
+            width: panelWidth,
+            height: panelHeight,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
-class _ScanFrameOverlayState extends State<_ScanFrameOverlay>
+/// A line of guidance over the camera picture.
+///
+/// It needs a ground of its own: bare text over a preview is legible against a
+/// wall and vanishes against anything busy, which is most of what a camera
+/// sees.
+class _Hint extends StatelessWidget {
+  const _Hint(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+        ),
+      ),
+    );
+  }
+}
+
+/// The viewfinder: four corners and a sweeping line.
+/// The four corners a camera draws where it was told to focus.
+///
+/// They come in wide and snap onto the point, then give one small pulse and
+/// fade. It is the only sign the tap was taken: focus itself is invisible on a
+/// code that was already sharp, and a tap that appears to do nothing reads as
+/// a tap that was missed.
+///
+/// Corners rather than a closed square because the point of the gesture is to
+/// say *there*, and an open shape leaves the thing being focused on visible
+/// through it.
+class _FocusReticle extends StatefulWidget {
+  const _FocusReticle({required this.at});
+
+  /// Where the tap landed, in the shell's coordinates.
+  final Offset at;
+
+  @override
+  State<_FocusReticle> createState() => _FocusReticleState();
+}
+
+class _FocusReticleState extends State<_FocusReticle>
+    with SingleTickerProviderStateMixin {
+  /// The square the corners sit on once settled. Big enough to frame a code,
+  /// small enough not to read as the viewfinder.
+  static const double _size = 78;
+
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..forward();
+
+  @override
+  void didUpdateWidget(_FocusReticle old) {
+    super.didUpdateWidget(old);
+    // A second tap reuses this widget, so the animation is started again
+    // rather than sitting finished at the new place.
+    if (widget.at != old.at) _controller.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  /// Wide at first, onto the point by 260ms, then one pulse in and back.
+  double _scaleAt(double t) {
+    if (t < 0.24) {
+      return 1.5 - 0.5 * Curves.easeOutCubic.transform(t / 0.24);
+    }
+    if (t < 0.46) {
+      // The pulse: in a little and out again, which is what says the camera
+      // acted rather than that the drawing merely arrived.
+      final p = (t - 0.24) / 0.22;
+      return 1.0 - 0.08 * math.sin(p * math.pi);
+    }
+    return 1.0;
+  }
+
+  double _opacityAt(double t) {
+    if (t < 0.06) return t / 0.06;
+    if (t < 0.72) return 1.0;
+    return 1.0 - (t - 0.72) / 0.28;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final t = _controller.value;
+          final scale = _scaleAt(t);
+          return Stack(
+            children: [
+              Positioned(
+                left: widget.at.dx - _size / 2,
+                top: widget.at.dy - _size / 2,
+                child: Opacity(
+                  opacity: _opacityAt(t).clamp(0.0, 1.0),
+                  child: Transform.scale(
+                    scale: scale,
+                    child: CustomPaint(
+                      size: const Size(_size, _size),
+                      // The stroke is scaled the other way, so the lines keep
+                      // one weight however wide the corners are standing.
+                      painter: _FocusCornersPainter(strokeScale: 1 / scale),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Four L-shaped corners, drawn as one path so the joins are mitred.
+class _FocusCornersPainter extends CustomPainter {
+  const _FocusCornersPainter({required this.strokeScale});
+
+  final double strokeScale;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // How far each arm runs along its edge.
+    final arm = size.width * 0.28;
+    final path = Path();
+    for (final (cx, cy, sx, sy) in [
+      (0.0, 0.0, 1.0, 1.0),
+      (size.width, 0.0, -1.0, 1.0),
+      (size.width, size.height, -1.0, -1.0),
+      (0.0, size.height, 1.0, -1.0),
+    ]) {
+      path
+        ..moveTo(cx + sx * arm, cy)
+        ..lineTo(cx, cy)
+        ..lineTo(cx, cy + sy * arm);
+    }
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2 * strokeScale
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..color = const Color(0xFF07C160),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_FocusCornersPainter old) =>
+      old.strokeScale != strokeScale;
+}
+
+/// The line that sweeps the picture, top to bottom, over and over.
+///
+/// There used to be a square viewfinder here, dimming everything outside
+/// itself. The scanner reads the whole frame, so the square was telling the
+/// user to aim at a region that was never the region being scanned, and the
+/// dimming hid the rest of a picture that was perfectly live. What is left is
+/// the one honest part: something is being looked at, and it is all of this.
+class _ScanLineOverlay extends StatefulWidget {
+  const _ScanLineOverlay();
+
+  @override
+  State<_ScanLineOverlay> createState() => _ScanLineOverlayState();
+}
+
+class _ScanLineOverlayState extends State<_ScanLineOverlay>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 2200),
+    duration: const Duration(milliseconds: 2600),
   )..repeat();
 
   @override
@@ -760,79 +1263,110 @@ class _ScanFrameOverlayState extends State<_ScanFrameOverlay>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) => CustomPaint(
-        painter: _FramePainter(progress: _controller.value),
+        painter: _ScanLinePainter(progress: _controller.value),
         size: Size.infinite,
       ),
     );
   }
 }
 
-class _FramePainter extends CustomPainter {
+class _ScanLinePainter extends CustomPainter {
+  _ScanLinePainter({required this.progress});
+
   final double progress;
 
-  _FramePainter({required this.progress});
+  static const _green = Color(0xFF07C160);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final side = size.shortestSide * 0.68;
-    final rect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height / 2 - 30),
-      width: side,
-      height: side,
-    );
+    final y = size.height * progress;
 
-    // Darken everything outside the frame.
-    final overlay = Path.combine(
-      PathOperation.difference,
-      Path()..addRect(Offset.zero & size),
-      Path()..addRRect(RRect.fromRectAndRadius(rect, const Radius.circular(12))),
-    );
-    canvas.drawPath(overlay, Paint()..color = Colors.black.withValues(alpha: 0.45));
+    // Faded in at the top and out at the bottom, so the return to the top
+    // reads as the sweep starting again rather than as the line jumping.
+    final fade = math.min(progress / 0.12, (1 - progress) / 0.12).clamp(0.0, 1.0);
+    if (fade <= 0) return;
 
-    // The four corners.
-    const green = Color(0xFF07C160);
-    final corner = Paint()
-      ..color = green
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-    const len = 24.0;
-    void drawCorner(Offset o, double dx, double dy) {
-      canvas.drawLine(o, o.translate(dx * len, 0), corner);
-      canvas.drawLine(o, o.translate(0, dy * len), corner);
+    // A trail above the line, longer than a square's would have been: at the
+    // full height of a screen a bare rule reads as thin, and the trail is what
+    // gives the sweep a direction.
+    final trail = math.min(size.height * 0.14, 150.0);
+    final top = math.max(y - trail, 0.0);
+    if (y > top) {
+      final band = Rect.fromLTRB(0, top, size.width, y);
+      canvas.drawRect(
+        band,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              _green.withValues(alpha: 0),
+              _green.withValues(alpha: 0.16 * fade),
+            ],
+          ).createShader(band),
+      );
     }
 
-    drawCorner(rect.topLeft, 1, 1);
-    drawCorner(rect.topRight, -1, 1);
-    drawCorner(rect.bottomLeft, 1, -1);
-    drawCorner(rect.bottomRight, -1, -1);
-
-    // The sweeping line.
-    final y = rect.top + rect.height * progress;
+    // The line itself, thinning towards the edges so it does not end in two
+    // hard stops against the sides of the screen.
+    final line = Rect.fromLTWH(0, y - 1, size.width, 2);
     canvas.drawRect(
-      Rect.fromLTWH(rect.left, y - 1, rect.width, 2),
+      line,
       Paint()
-        ..shader = const LinearGradient(
-          colors: [Colors.transparent, green, Colors.transparent],
-        ).createShader(Rect.fromLTWH(rect.left, y - 1, rect.width, 2)),
+        ..shader = LinearGradient(
+          colors: [
+            _green.withValues(alpha: 0),
+            _green.withValues(alpha: fade),
+            _green.withValues(alpha: 0),
+          ],
+          stops: const [0.0, 0.5, 1.0],
+        ).createShader(line),
     );
   }
 
   @override
-  bool shouldRepaint(_FramePainter old) => old.progress != progress;
+  bool shouldRepaint(_ScanLinePainter old) => old.progress != progress;
 }
-
-/// Radius of a marker, which is also the basis for tap hit-testing (the
-/// tolerance is twice this).
-const double _kPickRadius = 22;
 
 /// What automatic zooming aims for: the code filling this fraction of the
 /// picture's short side.
 const double _kZoomTargetFraction = 0.45;
 
+/// How often the zoom takes a step towards its target. Thirty a second: past
+/// the point where the steps can be told apart, and not so many that the
+/// platform call becomes the cost.
+const Duration _kZoomStepEvery = Duration(milliseconds: 33);
+
+/// Roughly how long the zoom takes to close most of the way onto its target.
+/// It is a time constant, not a duration: the last of the distance is walked
+/// slowest, which is what makes the arrival soft.
+const Duration _kZoomSettle = Duration(milliseconds: 420);
+
+/// How long the walk takes to come up to full speed, so that it starts by
+/// easing off the mark instead of lurching.
+const Duration _kZoomRampIn = Duration(milliseconds: 260);
+
 /// The ceiling for automatic zooming; beyond it the picture shakes too much
 /// and the target is easily lost.
 const double _kMaxAutoZoom = 4.0;
+
+/// A code smaller than this fraction of the picture is what automatic focusing
+/// is for. Bigger than that and continuous focus, which weighs the middle,
+/// already has it.
+const double _kAutoFocusMaxFraction = 0.45;
+
+/// How long automatic focusing stands aside after a tap.
+const Duration _kManualFocusHold = Duration(seconds: 4);
+
+/// The soonest it will point focus somewhere again.
+const Duration _kAutoFocusInterval = Duration(milliseconds: 1500);
+
+/// Moving this much across the picture counts as somewhere else, and is worth
+/// focusing on before [_kAutoFocusRepeat] has passed.
+const double _kAutoFocusMoved = 0.06;
+
+/// The soonest it will focus on the same place twice.
+const Duration _kAutoFocusRepeat = Duration(seconds: 4);
 
 /// How long automatic zooming stands aside after a manual one.
 const Duration _kManualZoomHold = Duration(seconds: 5);
@@ -846,6 +1380,20 @@ const Duration _kPickExitZoomHold = Duration(seconds: 3);
 /// staring.
 const Duration _kMultiCodeGrace = Duration(milliseconds: 700);
 
+/// A point of the scanned frame, as fractions of its width and height, in the
+/// coordinates [WxScan.focusAt] takes.
+///
+/// The frame arrives upright with respect to the screen. The texture holds the
+/// picture upright with respect to the device, which is [quarterTurns]
+/// clockwise from it, so the point is turned back the other way.
+(double, double) _previewFraction(double fx, double fy, int quarterTurns) =>
+    switch (quarterTurns) {
+      1 => (fy, 1 - fx),
+      2 => (1 - fx, 1 - fy),
+      3 => (1 - fy, fx),
+      _ => (fx, fy),
+    };
+
 /// The mapping from frame coordinates to screen coordinates.
 ///
 /// The preview fills its box with BoxFit.cover, so this works the same way.
@@ -858,86 +1406,6 @@ const Duration _kMultiCodeGrace = Duration(milliseconds: 700);
     dx: (size.width - fw * scale) / 2,
     dy: (size.height - fh * scale) / 2,
   );
-}
-
-/// Frame coordinates to screen coordinates.
-///
-/// Mirroring needs no attention here: a desktop camera's preview is flipped,
-/// but the flip and the coordinate mapping close over each other on the native
-/// side -- the frame goes to the scanner as it is and Rust flips the
-/// coordinates back through `mirror_output` -- so everything arriving here is
-/// already in one coordinate system.
-Offset _mapPoint(double x, double y, Size size, ScanOutcome f) {
-  final m = _coverFit(size, f.width, f.height);
-  return Offset(x * m.scale + m.dx, y * m.scale + m.dy);
-}
-
-/// A code's centre is the average of its four corners.
-Offset _codeCenter(ScanResult r, Size size, ScanOutcome f) {
-  final c = r.corners.centre;
-  return _mapPoint(c.dx, c.dy, size, f);
-}
-
-/// Picking among several codes: darken the picture and put a marker with an
-/// arrow on each one.
-class _PickPainter extends CustomPainter {
-  final ScanOutcome frame;
-
-  _PickPainter({required this.frame});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (frame.width == 0 || frame.height == 0) return;
-
-    // Darken the whole screen so the markers stand out.
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = Colors.black.withValues(alpha: 0.5),
-    );
-
-    const green = Color(0xFF07C160);
-    for (final r in frame.results) {
-      if (r.corners.isEmpty) continue;
-
-      // Outline where the code actually is, then put the button at its
-      // centre. The two share one mapping, which makes a misplacement
-      // obvious at a glance.
-      final path = Path();
-      for (var i = 0; i < r.corners.length; i++) {
-        final p = _mapPoint(r.corners[i].dx, r.corners[i].dy, size, frame);
-        if (i == 0) {
-          path.moveTo(p.dx, p.dy);
-        } else {
-          path.lineTo(p.dx, p.dy);
-        }
-      }
-      path.close();
-      canvas.drawPath(path, Paint()..color = green.withValues(alpha: 0.18));
-      canvas.drawPath(
-        path,
-        Paint()
-          ..color = green
-          ..strokeWidth = 2
-          ..style = PaintingStyle.stroke,
-      );
-
-      final c = _codeCenter(r, size, frame);
-      canvas.drawCircle(c, _kPickRadius + 6, Paint()..color = green.withValues(alpha: 0.25));
-      canvas.drawCircle(c, _kPickRadius, Paint()..color = green);
-
-      // A white arrow pointing right.
-      final arrow = Paint()
-        ..color = Colors.white
-        ..strokeWidth = 3
-        ..strokeCap = StrokeCap.round
-        ..style = PaintingStyle.stroke;
-      canvas.drawLine(c.translate(-4, -7), c.translate(4, 0), arrow);
-      canvas.drawLine(c.translate(4, 0), c.translate(-4, 7), arrow);
-    }
-  }
-
-  @override
-  bool shouldRepaint(_PickPainter old) => old.frame != frame;
 }
 
 /// Draws the four corners of each decoded code, mapping frame coordinates to

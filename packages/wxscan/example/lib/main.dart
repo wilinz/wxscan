@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'scan_page.dart';
+import 'home_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,7 +22,7 @@ class WxScanApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const ScanPage(),
+      home: const HomePage(),
     );
   }
 }
