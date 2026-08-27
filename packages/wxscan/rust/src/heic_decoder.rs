@@ -163,6 +163,20 @@ mod tests {
         }
     }
 
+    /// AVIF is the same container with AV1 inside instead of HEVC, and this
+    /// decoder carries only HEVC — so it declines, and on Android an AVIF is
+    /// still unreadable. Recorded because the container makes the two look
+    /// alike, and because Apple reads both.
+    #[test]
+    fn avif_is_not_covered() {
+        let _serial = crate::exclusively();
+        assert!(
+            super::decode_rgba(&fixture("upright.avif")).is_none(),
+            "an AVIF is HEVC's container with AV1 inside; decoding one would \
+             mean this crate had grown an AV1 decoder, which is worth noticing"
+        );
+    }
+
     /// It is asked about everything the built-in decoders declined, so it has
     /// to say no politely to what is not a HEIC at all.
     #[test]
