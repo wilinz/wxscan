@@ -300,4 +300,62 @@ void main() {
       );
     });
   });
+
+  group('an encoded picture held in memory', () {
+    // The same file again, handed over as bytes. A path and a buffer are one
+    // decoder with two front doors, and most of these say so.
+    late WxScanner scanner;
+    late Uint8List png;
+    setUp(() async {
+      scanner = await WxScanner.create();
+      png = await File('test/data/code.png').readAsBytes();
+    });
+    tearDown(() async => scanner.dispose());
+
+    test('decodes, and agrees with the same picture read from its path',
+        () async {
+      final outcome = await scanner.scanImage(png);
+      expect(outcome.results, isNotEmpty);
+      expect(outcome.width, 148);
+      expect(outcome.height, 148);
+
+      final fromPath = await scanner.scanPath('test/data/code.png');
+      expect(outcome.results.first.text, fromPath.results.first.text);
+      expect(outcome.results.first.corners, fromPath.results.first.corners);
+    });
+
+    test('the synchronous form agrees with the asynchronous one', () async {
+      final async = await scanner.scanImage(png);
+      expect(scanner.scanImageSync(png).results.first.text,
+          async.results.first.text);
+    });
+
+    test('bytes that are not a picture say so, with no path to blame it on',
+        () async {
+      await expectLater(
+        scanner.scanImage(Uint8List.fromList('not a picture at all'.codeUnits)),
+        throwsA(isA<PictureUnreadable>()
+            .having((e) => e.failure, 'failure',
+                PictureReadFailure.unsupportedFormat)
+            // There was no file, so nothing should be named as if there were.
+            .having((e) => e.path, 'path', isNull)),
+      );
+    });
+
+    test('an empty buffer is a format question rather than a crash', () async {
+      await expectLater(
+        scanner.scanImage(Uint8List(0)),
+        throwsA(isA<PictureUnreadable>().having((e) => e.failure, 'failure',
+            PictureReadFailure.unsupportedFormat)),
+      );
+    });
+
+    test('the message does not pretend there was a file', () {
+      expect(
+        const PictureUnreadable(null, PictureReadFailure.unsupportedFormat)
+            .toString(),
+        contains('the image data'),
+      );
+    });
+  });
 }

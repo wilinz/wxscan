@@ -284,6 +284,38 @@ class WxScanner implements ffi.Finalizable {
     return _unwrapPath(path, status, outcome);
   }
 
+  /// Decodes an encoded picture already in memory.
+  ///
+  /// [data] is the file — PNG, JPEG or GIF — not pixels; the format is read
+  /// from the bytes, so nothing has to say which it is. For pixels you already
+  /// hold, use [scanPixels] instead.
+  ///
+  /// This is [scanPath] for a caller that has the bytes rather than a path: a
+  /// picture a picker handed over as data, an asset, a download, or a browser,
+  /// where there are no paths at all. Decoding happens natively, so a 12
+  /// megapixel photograph never exists as 48 MB of RGBA on the Dart side.
+  ///
+  /// The orientation recorded in the file is applied, exactly as for a path.
+  ///
+  /// Throws [PictureUnreadable] with [PictureReadFailure.unsupportedFormat]
+  /// when the bytes are not a picture this build decodes — HEIC in particular,
+  /// which wants the platform's decoder and [scanPixels]. Its `path` is null,
+  /// there having been no file. A picture that simply has no code in it
+  /// returns an empty [ScanOutcome] instead, which is a different thing.
+  Future<ScanOutcome> scanImage(Uint8List data) async {
+    _checkAlive();
+    final (status, outcome) =
+        await _track(_worker.run(_BytesRequest(_handle.address, data)));
+    return _unwrapPath(null, status, outcome);
+  }
+
+  /// Decodes an encoded picture on the current isolate. See [scanImage].
+  ScanOutcome scanImageSync(Uint8List data) {
+    _checkAlive();
+    final (status, outcome) = _BytesRequest(_handle.address, data).run();
+    return _unwrapPath(null, status, outcome);
+  }
+
   /// Decodes a tightly packed grayscale image on the current isolate.
   ScanOutcome scanGraySync(Uint8List gray, int width, int height) =>
       scanFrameSync(gray, width, height, rowStride: width);
@@ -567,14 +599,20 @@ class _PixelsRequest extends _Request<ScanOutcome> {
 /// Turns the native status into either an outcome or the exception it stands
 /// for. It arrives as a plain integer because an exception thrown inside the
 /// worker isolate reaches the caller with its type flattened away.
-ScanOutcome _unwrapPath(String path, int status, ScanOutcome outcome) =>
+/// Turns a native status into a result or an exception.
+///
+/// [path] is null when the bytes came from [WxScanner.scanImage], where status
+/// 2 cannot arise: there was nothing to open.
+ScanOutcome _unwrapPath(String? path, int status, ScanOutcome outcome) =>
     switch (status) {
       0 => outcome,
       2 => throw PictureUnreadable(path, PictureReadFailure.unreadable),
       3 => throw PictureUnreadable(path, PictureReadFailure.unsupportedFormat),
-      // 1 is a null or non-UTF-8 argument, which from here can only be a path
-      // this library failed to hand over rather than anything the caller did.
-      _ => throw StateError('wxscan: scanning $path failed ($status)'),
+      // 1 is a null or non-UTF-8 argument, which from here can only be
+      // something this library failed to hand over rather than anything the
+      // caller did.
+      _ => throw StateError(
+          'wxscan: scanning ${path ?? 'the image data'} failed ($status)'),
     };
 
 /// Reads a picture from a path natively, carrying the status back rather than
@@ -602,6 +640,37 @@ class _PathRequest extends _Request<(int, ScanOutcome)> {
       if (out != ffi.nullptr) wxscan_results_free(out);
       calloc.free(status);
       calloc.free(cPath);
+    }
+  }
+}
+
+/// Decodes an encoded picture held in memory, carrying the status back rather
+/// than throwing, for the same reason [_PathRequest] does.
+class _BytesRequest extends _Request<(int, ScanOutcome)> {
+  const _BytesRequest(this.handleAddress, this.data);
+
+  final int handleAddress;
+  final Uint8List data;
+
+  @override
+  (int, ScanOutcome) run() {
+    final buf = calloc<ffi.Uint8>(data.length);
+    buf.asTypedList(data.length).setAll(0, data);
+    final status = calloc<ffi.Int32>();
+    ffi.Pointer<WxScanResults> out = ffi.nullptr;
+    try {
+      out = wxscan_scan_bytes(
+        ffi.Pointer<WxScanScanner>.fromAddress(handleAddress),
+        buf,
+        data.length,
+        status,
+      );
+      if (out == ffi.nullptr) return (status.value, ScanOutcome.empty);
+      return (status.value, _readOutcome(out.ref));
+    } finally {
+      if (out != ffi.nullptr) wxscan_results_free(out);
+      calloc.free(status);
+      calloc.free(buf);
     }
   }
 }

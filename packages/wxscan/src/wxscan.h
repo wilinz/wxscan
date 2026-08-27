@@ -38,8 +38,10 @@ enum WxScanStatus
   Unreadable = 2,
   /**
    * The bytes were read but are not an image this build can decode. PNG,
-   * JPEG, BMP, GIF, WebP and TIFF are; HEIC is not, and nor is anything
-   * else needing a system framework.
+   * JPEG and GIF are — the `image` dependency enables those three and no
+   * others, because they are what a photo picker actually writes and the
+   * rest cost 570 KB. HEIC is not, and nor is anything else needing a
+   * system framework.
    *
    * A photo library is mostly HEIC, but a picker generally does not hand it
    * over that way: on iOS, `image_picker` sniffs the first byte, finds
@@ -213,6 +215,38 @@ struct WxScanResults *wxscan_scan_frame(const struct WxScanScanner *scanner,
 struct WxScanResults *wxscan_scan_path(const struct WxScanScanner *scanner,
                                        const char *path,
                                        WxScanStatus *status);
+
+/**
+ * Decode an encoded image already in memory and scan it.
+ *
+ * The same work as [`wxscan_scan_path`] for a caller that has the bytes
+ * rather than a path: an image picked from a photo library and handed over as
+ * data, a download, an asset, or a browser, which has no filesystem to give a
+ * path into at all.
+ *
+ * `data` is the *encoded* file — PNG, JPEG or GIF, the three this build
+ * carries decoders for — not pixels. For pixels use [`wxscan_scan_pixels`].
+ * The format is sniffed from the bytes, so no caller has to say which it is.
+ *
+ * `status`, when not NULL, is set to a [`WxScanStatus`] saying what happened.
+ * [`WxScanStatus::Unreadable`] cannot arise here — there is nothing to open —
+ * so a buffer that is not a picture this build decodes comes back as
+ * [`WxScanStatus::UnsupportedFormat`]. Returns NULL for anything other than
+ * [`WxScanStatus::Ok`]. The result must be released with
+ * [`crate::results::wxscan_results_free`].
+ *
+ * The orientation recorded in the file is applied, exactly as for a path.
+ *
+ * # Safety
+ * `scanner` must come from [`crate::scanner::wxscan_scanner_new`], `data`
+ * must point to at least `len` readable bytes that stay valid for the
+ * duration of the call, and `status`, when not NULL, must point to a writable
+ * [`WxScanStatus`].
+ */
+struct WxScanResults *wxscan_scan_bytes(const struct WxScanScanner *scanner,
+                                        const uint8_t *data,
+                                        size_t len,
+                                        WxScanStatus *status);
 
 /**
  * Link probe: returns 1 when the library is linked in correctly.

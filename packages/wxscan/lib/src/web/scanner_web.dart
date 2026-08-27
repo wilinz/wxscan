@@ -18,6 +18,7 @@ library;
 import 'dart:typed_data';
 
 import '../result.dart';
+import 'decode.dart';
 import 'fetch.dart';
 import 'worker.dart';
 
@@ -188,6 +189,44 @@ class WxScanner {
         'wxscan: scanPath is not available in a browser, which has no '
         'filesystem. Read the picture yourself and use scanPixels.',
       );
+
+  /// Decodes an encoded picture already in memory.
+  ///
+  /// [data] is the file — not pixels — exactly as for the native scanner, and
+  /// this is the way to reach a picture in a browser at all, there being no
+  /// paths. A file from an `<input type=file>`, a download, an asset.
+  ///
+  /// The browser does the decoding here rather than the wasm module, which
+  /// carries no decoders. That is not a lesser path: it reads everything the
+  /// native build does and more — WebP, AVIF, and HEIC on Apple platforms,
+  /// which natively has to be handed back to the caller. The orientation the
+  /// file records is applied, as it is natively.
+  ///
+  /// Throws [PictureUnreadable] with [PictureReadFailure.unsupportedFormat],
+  /// and a null `path`, when the browser cannot decode the bytes. A picture
+  /// with no code in it returns an empty [ScanOutcome], which is a different
+  /// thing.
+  Future<ScanOutcome> scanImage(Uint8List data) async {
+    _checkAlive();
+    final decoded = await decodeImage(data);
+    if (decoded == null) {
+      throw const PictureUnreadable(
+          null, PictureReadFailure.unsupportedFormat);
+    }
+    // Alive again after the await: decoding is not instant, and the scanner
+    // can be disposed while a large photograph is being read.
+    _checkAlive();
+    return _worker.scanPixels(
+      decoded.pixels,
+      decoded.width,
+      decoded.height,
+      WxPixelFormat.rgba.nativeValue,
+    );
+  }
+
+  /// Not available in a browser: the browser's decoder is asynchronous, and so
+  /// is the scanner. See [scanImage].
+  ScanOutcome scanImageSync(Uint8List data) => _noSync('scanImageSync');
 
   static Never _noSync(String name) => throw UnsupportedError(
         'wxscan: $name is not available in a browser. The scanner runs in '

@@ -152,14 +152,16 @@ class ScanOutcome {
   bool get hasUndecodable => results.isEmpty && candidates.isNotEmpty;
 }
 
-/// Why a picture handed to `WxScanner.scanPath` never reached the scanner.
+/// Why a picture handed to `WxScanner.scanPath` or `WxScanner.scanImage` never
+/// reached the scanner.
 ///
 /// Neither of these is a picture with no code in it, which comes back as an
 /// empty [ScanOutcome] instead. Keeping the two apart is the point: a file the
 /// library never managed to read looks exactly like an empty picture if the
 /// distinction is dropped, and the reader is left with nothing to act on.
 enum PictureReadFailure {
-  /// The path could not be opened or read at all.
+  /// The path could not be opened or read at all. This cannot come from
+  /// `WxScanner.scanImage`, which is handed the bytes and has nothing to open.
   unreadable,
 
   /// The bytes were read but are not an image the library decodes. PNG, JPEG
@@ -173,15 +175,22 @@ enum PictureReadFailure {
 class PictureUnreadable implements Exception {
   const PictureUnreadable(this.path, this.failure);
 
-  final String path;
+  /// The file it came from, or null when the bytes were handed over directly
+  /// to `WxScanner.scanImage` and there was no path involved.
+  final String? path;
+
   final PictureReadFailure failure;
+
+  /// What to call it in a message: a path when there is one, and otherwise a
+  /// phrase that does not pretend there was a file.
+  String get _subject => path ?? 'the image data';
 
   @override
   String toString() => switch (failure) {
         PictureReadFailure.unreadable =>
-          'PictureUnreadable: could not open or read $path',
+          'PictureUnreadable: could not open or read $_subject',
         PictureReadFailure.unsupportedFormat =>
-          'PictureUnreadable: $path is not an image this build can decode; '
+          'PictureUnreadable: $_subject is not an image this build can decode; '
               'HEIC and anything else needing a system decoder must go '
               'through the platform and WxScanner.scanPixels',
       };
