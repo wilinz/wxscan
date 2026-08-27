@@ -8,6 +8,7 @@ import 'package:ffi/ffi.dart';
 
 import 'bindings.dart';
 import 'ffi.dart';
+import 'platform_decoder.dart';
 import 'result.dart';
 
 /// How the bytes of a colour buffer are laid out.
@@ -106,6 +107,10 @@ class WxScanner implements ffi.Finalizable {
     Uint8List? detectModel,
     Uint8List? srModel,
   }) async {
+    // Before anything is scanned, so that scanImage reads what the platform
+    // reads rather than only png, jpeg and gif. Idempotent, and a no-op where
+    // the platform has nothing to lend.
+    installPlatformImageDecoder();
     final worker = await _ScanWorker.spawn();
     try {
       var address = await worker.run(_CreateRequest(detectModel, srModel));

@@ -350,6 +350,29 @@ void main() {
       );
     });
 
+    test('a HEIC decodes through the platform, where there is one', () async {
+      // The built-in decoders are png, jpeg and gif; HEIC is what an Apple
+      // photo library is mostly made of, and it arrives here only because
+      // WxScanner.create lends the scanner the system's decoder. Nothing else
+      // in the package can read these bytes.
+      final heic = await File('test/data/upright.heic').readAsBytes();
+      if (!Platform.isMacOS && !Platform.isIOS) {
+        // Elsewhere there is nothing lent yet, and the right answer is still
+        // the honest one rather than a decode.
+        await expectLater(
+          scanner.scanImage(heic),
+          throwsA(isA<PictureUnreadable>().having((e) => e.failure, 'failure',
+              PictureReadFailure.unsupportedFormat)),
+        );
+        return;
+      }
+      final outcome = await scanner.scanImage(heic);
+      expect(outcome.results, isNotEmpty);
+      // The dimensions of the png it was converted from: the orientation is
+      // applied by the platform exactly as the built-in path applies it.
+      expect((outcome.width, outcome.height), (320, 460));
+    });
+
     test('the message does not pretend there was a file', () {
       expect(
         const PictureUnreadable(null, PictureReadFailure.unsupportedFormat)
