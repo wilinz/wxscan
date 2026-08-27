@@ -1,0 +1,30 @@
+# Where the browser's built artifacts come from, and what they must be.
+#
+# None of them is committed in this package. A compiled artifact sitting beside
+# the sources it came from goes out of step with them, and one here did — the
+# live demo served a fixed detector bug for a while, because rebuilding it was
+# a step someone had to remember.
+#
+# So they are built by CI in wilinz/wxscan-rs and fetched from its releases.
+# `dart run wxscan:fetch_web` does that, and refuses anything whose checksum
+# is not below: a release can be replaced, and a package that trusted whatever
+# a URL served would not be pinning anything.
+#
+# Both tags are immutable. wasm-latest exists and is not used here on purpose —
+# it moves, and a lock that moves is not a lock.
+#
+# To move to newer artifacts: tool/stamp_web.sh <scanner-tag> <tflite-tag>
+#
+# TFLITE_TAG is tflite-<tensorflow-version>-p<patch>. The version has to be the
+# one this package pins for every other platform, and tool/check_tflite_web.sh
+# says so; the patch revision is wxscan-rs's own, counting the patches built on
+# top of that TensorFlow, which change while the version stays put.
+
+REPO=wilinz/wxscan-rs
+
+SCANNER_TAG=v0.1.0
+SCANNER_SHA256=5ca889120cd62313238af3ac14dd4bfb2eaa63325b1832de96449c900649dcdb
+
+TFLITE_TAG=tflite-v2.17.1-p2
+TFLITE_JS_SHA256=fa08b041c6e6c58fb1085a6ecfb88fe3227ce65a551fe1bd0b28d33bec38b369
+TFLITE_WASM_SHA256=48ab50a9a3bf2f8a7b27e96db185444cf7b8a732d70511175d1af7fc74730651

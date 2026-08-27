@@ -1,6 +1,10 @@
 # Rust build output
 rust/target/
 
-# The scanner is built from the Rust sources rather than committed; see
-# bin/fetch_web.dart for why, and for how to build it.
+# Neither the scanner nor the TensorFlow Lite runtime is committed; both are
+# fetched from the releases pinned in tool/web.lock. See bin/fetch_web.dart for
+# why, and for how to build them locally instead. Ignored here so that a local
+# build left in place cannot be committed by accident.
 lib/src/web/assets/wxscan_wasm.wasm
+lib/src/web/assets/wxscan_tflite.js
+lib/src/web/assets/wxscan_tflite.wasm

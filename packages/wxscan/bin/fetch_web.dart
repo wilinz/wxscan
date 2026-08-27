@@ -3,59 +3,60 @@
 ///     dart run wxscan:fetch_web              # into web/wxscan
 ///     dart run wxscan:fetch_web --into DIR
 ///     dart run wxscan:fetch_web --from DIR   # from a local build
+///     dart run wxscan:fetch_web --offline    # cache only, never the network
 ///
-/// The four files ship inside this package, so this copies rather than
-/// downloads: no network, no release to keep in step, and the artifacts always
-/// match the Dart that drives them. They are not assets — declaring Flutter
-/// assets would make this a Flutter package, and `dart run` and `dart test`
-/// would stop working — so they have to be placed by hand, which is what this
-/// does.
+/// Three of the four files are compiled — the scanner from the Rust sources,
+/// and the TensorFlow Lite runtime's two by emscripten — and none of them is
+/// carried in this package. A compiled artifact sitting beside the sources it
+/// came from goes out of step with them, and one here did: the live demo served
+/// a detector bug for a while after Rust had been fixed, because rebuilding it
+/// was a step someone had to remember. Anything that has to be remembered
+/// eventually is not.
 ///
-/// A build hook cannot. Hooks emit code assets, which are native libraries the
-/// Dart runtime loads, and a web build declares it wants none, so the hook
-/// returns immediately. Data assets could carry these, but they are
-/// experimental and bundled only by Flutter behind a flag. A hook also writes
-/// into its own output directory, never into an application's `web/`.
+/// So they are built by CI in wxscan-rs and fetched from its releases, pinned
+/// by tag and checksum in `tool/web.lock`. Two releases rather than one,
+/// because the scanner changes with every push there while the runtime moves
+/// only when the pinned TensorFlow version does — many scanner versions point
+/// at one runtime. Nothing has to be built to use this package in a browser,
+/// and nothing can quietly rot either.
+///
+/// The fourth comes from here: `wxscan_worker.js` is hand-written and moves
+/// with this package rather than with Rust.
+///
+/// They are files rather than declared Flutter assets because declaring assets
+/// would make this a Flutter package, and `dart run` and `dart test` would stop
+/// working. A build hook cannot place them either: hooks emit code assets,
+/// which are libraries the Dart runtime loads, and a web build declares it
+/// wants none, so the hook returns immediately. A hook also writes into its own
+/// output directory, never into an application's `web/`.
 library;
 
 import 'dart:io';
 import 'dart:isolate';
 
-/// What the browser build needs served, and where each one comes from.
-///
-/// The scanner is deliberately *not* bundled. It is the one file here built
-/// from the Rust sources, and a compiled artifact committed beside the sources
-/// it came from goes quietly out of step with them — which is exactly what it
-/// did: the live demo served a detector bug for a while after Rust had been
-/// fixed, because rebuilding it was a step someone had to remember. Anything
-/// that has to be remembered eventually is not.
-///
-/// The other three stay. The worker is hand-written and moves with this
-/// package rather than with Rust, and the TensorFlow Lite runtime is an
-/// emscripten build of TensorFlow and a thousand XNNPACK microkernels — a
-/// quarter of an hour, and an emsdk — that moves only when the pinned TFLite
-/// version does. Asking for that to try a package would be asking too much;
-/// asking for one `cargo build` is not.
-enum _Artifact {
-  worker('wxscan_worker.js', bundled: true),
-  scanner('wxscan_wasm.wasm', bundled: false),
-  tfliteJs('wxscan_tflite.js', bundled: true),
-  tfliteWasm('wxscan_tflite.wasm', bundled: true);
+import 'package:crypto/crypto.dart';
 
-  const _Artifact(this.name, {required this.bundled});
+/// What the browser build needs served, and where each one comes from.
+enum _Artifact {
+  worker('wxscan_worker.js', from: _Source.package),
+  scanner('wxscan_wasm.wasm', from: _Source.scannerRelease),
+  tfliteJs('wxscan_tflite.js', from: _Source.tfliteRelease),
+  tfliteWasm('wxscan_tflite.wasm', from: _Source.tfliteRelease);
+
+  const _Artifact(this.name, {required this.from});
 
   final String name;
-
-  /// Whether this package carries a copy, and so whether `--from` is the only
-  /// way to get one.
-  final bool bundled;
+  final _Source from;
 }
 
-/// The Dart VM ignores whatever `main` returns, so the status has to be set
-/// rather than returned. Without this every failure below left the process
-/// reporting success, which a script — or a CI step that now depends on the
-/// scanner being built — would never notice.
+/// The three places a file can come from. `--from` overrides all of them,
+/// wherever it happens to hold the file.
+enum _Source { package, scannerRelease, tfliteRelease }
+
 Future<void> main(List<String> args) async {
+  // The Dart VM ignores whatever `main` returns, so the status has to be set
+  // rather than returned. Without this every failure below would leave the
+  // process reporting success, which a build script would never notice.
   exitCode = await _run(args);
 }
 
@@ -67,6 +68,7 @@ Future<int> _run(List<String> args) async {
 
   final into = Directory(_option(args, '--into') ?? 'web/wxscan');
   final from = _option(args, '--from');
+  final offline = args.contains('--offline');
 
   final packageRoot = await _packageRoot();
   if (packageRoot == null) {
@@ -76,28 +78,57 @@ Future<int> _run(List<String> args) async {
   }
   final bundled = Directory('${packageRoot.path}/lib/src/web/assets');
 
-  // Every source is resolved before anything is written, so a missing
-  // scanner does not leave three of the four files in place and the served
-  // directory in a state that looks half done.
+  final _Lock lock;
+  try {
+    lock = _Lock.read(File('${packageRoot.path}/tool/web.lock'));
+  } on FormatException catch (e) {
+    stderr.writeln('wxscan: ${e.message}');
+    return 1;
+  }
+
+  // Downloads are kept between runs, keyed by the checksum they must have, so
+  // a second project on the same machine pays nothing, and a re-run after a
+  // failure pays nothing either.
+  final cache = Directory('${_cacheRoot()}/wxscan/web');
+
+  // Every source is resolved before anything is written, so a file that cannot
+  // be had does not leave the served directory looking half finished.
   final sources = <_Artifact, (File, String)>{};
   for (final artifact in _Artifact.values) {
     // A local build wins wherever it has the file, so building only the
-    // scanner — which is the usual case — takes the rest from the package.
+    // scanner takes the rest from the package and the releases.
     final built = from == null ? null : File('$from/${artifact.name}');
     if (built != null && built.existsSync()) {
-      sources[artifact] = (built, _size(built));
+      sources[artifact] = (built, '${_size(built)}  (from $from)');
       continue;
     }
-    if (!artifact.bundled) {
-      stderr.writeln(_notBundled(artifact.name, from));
+
+    if (artifact.from == _Source.package) {
+      final file = File('${bundled.path}/${artifact.name}');
+      if (!file.existsSync()) {
+        stderr.writeln('wxscan: ${file.path} is missing');
+        return 1;
+      }
+      sources[artifact] = (file, '${_size(file)}  (from the package)');
+      continue;
+    }
+
+    final (tag, want) = lock.pin(artifact);
+    final File file;
+    try {
+      file = await _fetch(
+        repo: lock.repo,
+        tag: tag,
+        name: artifact.name,
+        want: want,
+        cache: cache,
+        offline: offline,
+      );
+    } on _FetchFailure catch (e) {
+      stderr.writeln(e.message);
       return 1;
     }
-    final file = File('${bundled.path}/${artifact.name}');
-    if (!file.existsSync()) {
-      stderr.writeln('wxscan: ${file.path} is missing');
-      return 1;
-    }
-    sources[artifact] = (file, '${_size(file)}  (from the package)');
+    sources[artifact] = (file, '${_size(file)}  ($tag)');
   }
 
   into.createSync(recursive: true);
@@ -112,43 +143,152 @@ Future<int> _run(List<String> args) async {
   return 0;
 }
 
+/// Gets one release asset, from the cache if it is already there.
+///
+/// The checksum names the file in the cache as well as guaranteeing it: a hit
+/// is a file already known to be the right one, so nothing is verified twice,
+/// and a pin that changes cannot be answered by a stale copy.
+Future<File> _fetch({
+  required String repo,
+  required String tag,
+  required String name,
+  required String want,
+  required Directory cache,
+  required bool offline,
+}) async {
+  final cached = File('${cache.path}/$want/$name');
+  if (cached.existsSync()) return cached;
+
+  final url = 'https://github.com/$repo/releases/download/$tag/$name';
+  if (offline) {
+    throw _FetchFailure('wxscan: $name is not in the cache and --offline was '
+        'given.\n  It would have come from $url');
+  }
+
+  stdout.writeln('  fetching $name from $tag');
+  final bytes = await _get(url);
+
+  final got = sha256.convert(bytes).toString();
+  if (got != want) {
+    throw _FetchFailure('''
+wxscan: $name is not what tool/web.lock pins.
+  from     $url
+  pinned   $want
+  received $got
+
+  A release asset can be replaced, so nothing here uses bytes the lock does not
+  name. If the release changed on purpose, re-pin it with tool/stamp_web.sh.''');
+  }
+
+  cached.parent.createSync(recursive: true);
+  // Written beside and moved into place, so an interrupted run cannot leave a
+  // truncated file under a name that says it has been checked.
+  File('${cached.path}.part')
+    ..writeAsBytesSync(bytes)
+    ..renameSync(cached.path);
+  return cached;
+}
+
+Future<List<int>> _get(String url) async {
+  final client = HttpClient();
+  try {
+    final response = await client.getUrl(Uri.parse(url)).then((r) => r.close());
+    if (response.statusCode != 200) {
+      throw _FetchFailure('wxscan: $url answered ${response.statusCode}.\n'
+          '  The tag in tool/web.lock may not exist, or may not carry this '
+          'asset.');
+    }
+    final bytes = <int>[];
+    await for (final chunk in response) {
+      bytes.addAll(chunk);
+    }
+    return bytes;
+  } on SocketException catch (e) {
+    throw _FetchFailure('wxscan: could not reach $url ($e)');
+  } finally {
+    client.close();
+  }
+}
+
+class _FetchFailure implements Exception {
+  const _FetchFailure(this.message);
+  final String message;
+}
+
+/// `tool/web.lock`: the whole of what this package trusts about the two
+/// artifacts it does not carry.
+class _Lock {
+  const _Lock({
+    required this.repo,
+    required this.scannerTag,
+    required this.scannerSha,
+    required this.tfliteTag,
+    required this.tfliteJsSha,
+    required this.tfliteWasmSha,
+  });
+
+  final String repo;
+  final String scannerTag, scannerSha;
+  final String tfliteTag, tfliteJsSha, tfliteWasmSha;
+
+  static _Lock read(File file) {
+    if (!file.existsSync()) throw FormatException('${file.path} is missing');
+    final values = <String, String>{};
+    for (final line in file.readAsLinesSync()) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
+      final i = trimmed.indexOf('=');
+      if (i > 0) values[trimmed.substring(0, i)] = trimmed.substring(i + 1);
+    }
+    String need(String key) =>
+        values[key] ?? (throw FormatException('${file.path} has no $key'));
+    return _Lock(
+      repo: need('REPO'),
+      scannerTag: need('SCANNER_TAG'),
+      scannerSha: need('SCANNER_SHA256'),
+      tfliteTag: need('TFLITE_TAG'),
+      tfliteJsSha: need('TFLITE_JS_SHA256'),
+      tfliteWasmSha: need('TFLITE_WASM_SHA256'),
+    );
+  }
+
+  (String, String) pin(_Artifact artifact) => switch (artifact) {
+        _Artifact.scanner => (scannerTag, scannerSha),
+        _Artifact.tfliteJs => (tfliteTag, tfliteJsSha),
+        _Artifact.tfliteWasm => (tfliteTag, tfliteWasmSha),
+        _Artifact.worker => throw StateError('the worker is not fetched'),
+      };
+}
+
+/// Where downloads are kept between runs.
+///
+/// Outside the project, so several checkouts share one copy, and under the
+/// platform's own cache directory so that clearing caches clears this too.
+String _cacheRoot() {
+  final env = Platform.environment;
+  final home = env['HOME'] ?? env['USERPROFILE'] ?? '.';
+  if (Platform.isWindows) return env['LOCALAPPDATA'] ?? '$home/AppData/Local';
+  if (Platform.isMacOS) return '$home/Library/Caches';
+  return env['XDG_CACHE_HOME'] ?? '$home/.cache';
+}
+
 const _usage = '''
 Places the browser build's files for an application to serve.
 
-  dart run wxscan:fetch_web [--into DIR] [--from DIR]
+  dart run wxscan:fetch_web [--into DIR] [--from DIR] [--offline]
 
   --into DIR   where to put them; web/wxscan by default, which is where the
                package looks without being told otherwise
   --from DIR   take whatever this directory holds from a local build instead
-               of from the package. The scanner (wxscan_wasm.wasm) is not
-               bundled and has to come from here; run it with no --from to be
-               told how to build it.
-''';
+               of from the package or a release. Building the scanner and
+               pointing this at it is how to try a change to the Rust without
+               waiting for a release.
+  --offline    use only what has already been downloaded, and fail rather than
+               reach the network
 
-/// What to say when the one artifact this package does not carry is not to
-/// hand either. It is the whole of the reader's next step, because they have
-/// no other way to find it out.
-String _notBundled(String name, String? from) => '''
-wxscan: $name is not bundled with this package${from == null ? '' : ', and $from does not hold it'}.
-
-  It is built from the Rust sources rather than committed, so that it cannot
-  fall out of step with them. Building it is one command:
-
-      git clone https://github.com/wilinz/wxscan-rs
-      git clone https://github.com/wilinz/cvlite
-      git clone https://github.com/wilinz/wxing
-      cd wxscan-rs
-      printf '[patch.crates-io]\\ncvlite = { path = "../cvlite" }\\nwxing = { path = "../wxing" }\\n' \\
-        > .cargo/config.toml
-      RUSTFLAGS="-C target-feature=+simd128" cargo build -p wxscan-wasm \\
-        --target wasm32-unknown-unknown --profile wasm
-
-  The two siblings are cloned because cvlite and wxing are not on crates.io
-  yet. Then point this at the output:
-
-      dart run wxscan:fetch_web --from wxscan-rs/target/wasm32-unknown-unknown/wasm
-
-  The other three files come from the package, so nothing else has to be built.
+The scanner and the TensorFlow Lite runtime are not carried in this package.
+They are fetched from the releases named in tool/web.lock, checked against the
+checksums there, and kept in a cache between runs.
 ''';
 
 String? _option(List<String> args, String name) {
@@ -167,7 +307,7 @@ String _size(File file) {
 /// which under `dart run wxscan:fetch_web` points at a snapshot in
 /// `.dart_tool` instead of at the package.
 Future<Directory?> _packageRoot() async {
-  final lib = await Isolate.resolvePackageUri(Uri.parse('package:wxscan/'));
-  if (lib == null) return null;
-  return Directory.fromUri(lib.resolve('..')).absolute;
+  final uri = await Isolate.resolvePackageUri(Uri.parse('package:wxscan/'));
+  if (uri == null) return null;
+  return Directory.fromUri(uri.resolve('..'));
 }

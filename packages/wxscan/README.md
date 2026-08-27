@@ -217,13 +217,13 @@ page. `WxScanner` is the same class with the same methods; what differs:
 - `scanGraySync` and the other `*Sync` methods throw `UnsupportedError`. The
   engine answers by message from a worker, so there is nothing to return in the
   same call.
-- Four files have to be served by the application, and **the scanner among
-  them has to be built** — see [Building the scanner](#building-the-scanner)
-  below. Three of the four ship inside this package; one command places all
-  four:
+- Four files have to be served by the application. One ships inside this
+  package; the other three are fetched from the releases pinned in
+  `tool/web.lock`, checked against the checksums there and cached between
+  runs. One command places all four, and nothing has to be built:
 
   ```sh
-  dart run wxscan:fetch_web --from <the cargo build's output>
+  dart run wxscan:fetch_web
   ```
 
   `web/wxscan` is where they go and where the package looks, so nothing else
@@ -234,13 +234,16 @@ page. `WxScanner` is the same class with the same methods; what differs:
   would make this a Flutter package, and `dart run` and `dart test` would stop
   working.
 
-### Building the scanner
+### Building the scanner yourself
 
-`wxscan_wasm.wasm` is not bundled. It is the one file here compiled from the
-Rust sources, and a compiled artifact committed beside the sources it came from
-goes out of step with them — this one did, and the live demo served a fixed
-detector bug for a while because rebuilding it was a step someone had to
-remember.
+`wxscan_wasm.wasm` is not bundled, and neither is the TensorFlow Lite runtime
+beside it. A compiled artifact committed next to the sources it came from goes
+out of step with them — this one did, and the live demo served a fixed detector
+bug for a while because rebuilding it was a step someone had to remember. So
+both are built by CI in wxscan-rs and fetched from its releases, and `fetch_web`
+on its own is all an application needs.
+
+Build it yourself to try a change to the Rust without waiting for a release:
 
 ```sh
 git clone https://github.com/wilinz/wxscan-rs
@@ -253,13 +256,15 @@ RUSTFLAGS="-C target-feature=+simd128" cargo build -p wxscan-wasm \
   --target wasm32-unknown-unknown --profile wasm
 ```
 
-Then `--from wxscan-rs/target/wasm32-unknown-unknown/wasm`. Running `fetch_web`
-with no `--from` prints all of this and exits non-zero, so a build script finds
-out rather than shipping a page with nothing to run.
+Then `--from wxscan-rs/target/wasm32-unknown-unknown/wasm`. Whatever that
+directory holds is taken from it and the rest still comes from the releases, so
+building only the scanner — the usual case — needs nothing else.
 
-The TensorFlow Lite runtime beside it *is* committed and needs none of this. It
-moves only when the pinned TFLite version does, and `tool/check_tflite_web.sh`
-fails if it has been left behind when that happened.
+The TensorFlow Lite runtime is an emsdk and a quarter of an hour, and it has a
+release of its own under a `tflite-` tag, which many versions of the scanner
+point at because it moves only when the pinned TFLite version does.
+`tool/check_tflite_web.sh` fails if it has been left behind when that
+happened.
 
 **[doc/web_build.md](doc/web_build.md)** is the whole of it: what each of the
 four files is, upgrading the runtime, and what CI does differently and why.

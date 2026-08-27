@@ -1,10 +1,11 @@
 # Builds the example for the browser and publishes it as the live demo at
 # https://wilinz.github.io/wxscan/.
 #
-# Nothing native is compiled here. A web build asks the Dart build hooks for no
-# code assets, so they return without touching Rust or libtensorflowlite_c; the
-# four browser artifacts are the ones committed inside wxscan, placed by
-# `fetch_web`, and the weights are committed in the example.
+# Nothing native is compiled for the host here. A web build asks the Dart build
+# hooks for no code assets, so they return without touching Rust or
+# libtensorflowlite_c. The weights are committed in the example; of the four
+# browser artifacts one comes from wxscan, one is built below, and two are
+# fetched from the release wxscan pins.
 name: Live demo
 
 on:
@@ -68,47 +69,51 @@ jobs:
 
       - run: flutter pub get
 
-      # The browser's TFLite runtime is committed rather than built — an emsdk
-      # and a quarter of an hour — so it is the one thing here that can be left
-      # behind when the pinned TensorFlow version moves, with nothing visible
-      # at run time to say so. See packages/wxscan/doc/web_build.md.
+      # The browser's TFLite runtime comes from a release of its own, so it is
+      # the one thing here that can be left behind when the pinned TensorFlow
+      # version moves, with nothing visible at run time to say so. See
+      # packages/wxscan/doc/web_build.md.
       - name: Check the browser TFLite runtime against the pin
         working-directory: packages/wxscan
         run: tool/check_tflite_web.sh
 
-      # The browser artifacts are not Flutter assets — see fetch_web's own
-      # documentation for why — so they are copied into web/ before the build.
-      #
-      # Copied here rather than by `dart run wxscan:fetch_web`, which is what a
-      # reader is told to run. Running a Dart program builds the package's code
-      # assets first, and that means cargo, for the host, against path
-      # dependencies on sibling checkouts this runner does not have — several
-      # minutes of Rust for a web build that wants none of it. The command only
-      # copies these files, so the copy is done directly.
-      #
-      # The whole directory, not a list: a fifth artifact should arrive here
-      # without anyone remembering to add it, and the check below is what says
-      # so if the path ever moves.
       # What `dart run wxscan:fetch_web --from ...` does, done directly.
       #
       # Not the command itself: running any Dart program builds the package's
       # code assets first, which means cargo for the *host* — several minutes
       # of Rust that a web build has no use for, against path dependencies on
       # checkouts laid out as siblings of the repository, which these are not.
-      # The copying is four files.
+      # So the four files are assembled here, from the same three places
+      # fetch_web takes them from, and web.lock stays the only thing that says
+      # which release and which bytes.
       #
-      # Three come from the package. The TFLite runtime among them is not built
-      # here: emscripten, a clone of TensorFlow and a thousand XNNPACK
-      # microkernels, a quarter of an hour at best, and it moves only when the
-      # pinned TFLite version does. The scanner comes from the build above, and
-      # the count is checked, so a build that quietly produced nothing cannot
-      # reach the page.
+      # The scanner is the one built above rather than the released one: this
+      # demo follows main, which is the whole point of it. The runtime is
+      # fetched, because building it is an emsdk and ten minutes and it moves
+      # only when the pinned TensorFlow version does.
+      #
+      # The checksums are verified for the same reason fetch_web verifies them:
+      # a release asset can be replaced, and a page built from whatever a URL
+      # served would be pinning nothing.
       - name: Place the browser artifacts
         run: |
+          lock=../../wxscan/tool/web.lock
+          value() { grep "^$1=" "$lock" | head -1 | cut -d= -f2-; }
+          repo=$(value REPO)
+          tag=$(value TFLITE_TAG)
+
           mkdir -p web/wxscan
-          cp ../../wxscan/lib/src/web/assets/* web/wxscan/
+          cp ../../wxscan/lib/src/web/assets/wxscan_worker.js web/wxscan/
           cp "${{ github.workspace }}/_rust/wxscan-rs/target/wasm32-unknown-unknown/wasm/wxscan_wasm.wasm" \
              web/wxscan/
+          for f in wxscan_tflite.js wxscan_tflite.wasm; do
+            curl -fsSL "https://github.com/$repo/releases/download/$tag/$f" -o "web/wxscan/$f"
+          done
+
+          echo "$(value TFLITE_JS_SHA256)  web/wxscan/wxscan_tflite.js" | sha256sum -c -
+          echo "$(value TFLITE_WASM_SHA256)  web/wxscan/wxscan_tflite.wasm" | sha256sum -c -
+
+          # A build that quietly produced nothing cannot reach the page.
           test "$(ls web/wxscan | wc -l)" -eq 4
           ls -l web/wxscan
 

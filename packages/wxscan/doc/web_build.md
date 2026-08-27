@@ -1,28 +1,66 @@
 # Building for the browser
 
-Four files have to be served for the scanner to run in a browser. Two of them
-are committed in this package, one is hand-written here, and **one you build**.
+Four files have to be served for the scanner to run in a browser. One is
+written here; the other three are compiled, and none of them is committed.
 
-| File | Where it comes from | Rebuild when |
+| File | Where it comes from | Moves when |
 |---|---|---|
-| `wxscan_worker.js` | this package, hand-written | never — it is source, and moves with this package |
-| `wxscan_wasm.wasm` | **you build it**, from the Rust sources | every time the Rust changes |
-| `wxscan_tflite.js` | committed here | the pinned TensorFlow version moves |
-| `wxscan_tflite.wasm` | committed here | the pinned TensorFlow version moves |
+| `wxscan_worker.js` | this package, hand-written | it is source, and moves with this package |
+| `wxscan_wasm.wasm` | the `SCANNER_TAG` release | the Rust changes |
+| `wxscan_tflite.js` | the `TFLITE_TAG` release | the pinned TensorFlow version, or the patches on top of it, move |
+| `wxscan_tflite.wasm` | the `TFLITE_TAG` release | as above |
 
-`dart run wxscan:fetch_web --from <build output>` places all four in
-`web/wxscan`, which is where the package looks. It takes from `--from`
-whatever that directory holds and the rest from here, so building only the
-scanner — the usual case — needs nothing else. With no `--from` it prints what
-follows and exits non-zero.
+```sh
+dart run wxscan:fetch_web
+```
 
-The split is about cost, not principle. The scanner is seconds; the TensorFlow
-runtime is an emsdk and a quarter of an hour. Something rebuilt in seconds
-should never be a file someone has to remember to refresh, and something that
-takes a quarter of an hour should never be a thing you must do to try a
-package.
+places all four in `web/wxscan`, which is where the package looks. The two
+releases are pinned by tag and SHA-256 in [`tool/web.lock`](../tool/web.lock),
+downloads are refused if they do not match, and what is downloaded is cached
+outside the project — a second checkout on the same machine pays nothing.
 
-## The scanner
+`--into DIR` puts them somewhere else, `--offline` fails rather than reaching
+the network, and `--from DIR` takes whatever a local build directory holds
+instead.
+
+## Why nothing here is committed
+
+It was, and it went out of step with the Rust it came from: the live demo
+served a detector bug for a while after the fix had landed, because rebuilding
+the module was a step someone had to remember. Anything that has to be
+remembered eventually is not.
+
+A build hook cannot place them either. Hooks emit code assets, which are
+libraries the Dart runtime loads, and a web build declares it wants none, so
+the hook returns before reaching Rust; a hook also writes into its own output
+directory, never into an application's `web/`. And they are plain files rather
+than declared Flutter assets because declaring assets would make this a Flutter
+package, and `dart run` and `dart test` would stop working.
+
+So it is either a committed binary that can rot, or a download that cannot.
+
+## Two releases, not one
+
+The scanner and the runtime are pinned separately, because they move on
+different rhythms:
+
+* **The scanner** is wxscan-rs's own code. It is rebuilt on every push there,
+  and takes seconds.
+* **The TensorFlow Lite runtime** is a dependency. Building it is an emsdk, a
+  clone of TensorFlow and about a thousand XNNPACK microkernels — ten minutes
+  at best — and it changes a few times a year. Many scanner versions point at
+  one runtime release rather than each carrying its own 1.3 MB copy.
+
+`TFLITE_TAG` is `tflite-<tensorflow-version>-p<patch>`. The patch revision is
+wxscan-rs's own: upstream does not build this configuration, so what comes out
+of a given TensorFlow version is decided as much by the patches applied on top
+of it as by the version, and those change while the version stays put. Two
+runtimes that differ only in patches therefore get different tags rather than
+sharing one.
+
+## Building the scanner yourself
+
+To try a change to the Rust without waiting for a release:
 
 ```sh
 git clone https://github.com/wilinz/wxscan-rs
@@ -45,72 +83,70 @@ Then, from your application:
 dart run wxscan:fetch_web --from ../wxscan-rs/target/wasm32-unknown-unknown/wasm
 ```
 
-`rust-toolchain.toml` in wxscan-rs pins the compiler, so this is the same
-module CI serves. `simd128` costs nothing in correctness and takes about 28%
-off scanning time.
+`--from` wins wherever it has the file, so this takes the scanner from your
+build and the runtime from its release. `rust-toolchain.toml` in wxscan-rs pins
+the compiler, so with no local change this is the same module CI publishes.
+`simd128` costs nothing in correctness and takes about 28% off scanning time.
 
-**Why it is not shipped built.** It was, and it went out of step with the Rust
-it came from: the live demo served a detector bug for a while after the fix had
-landed, because rebuilding it was a step someone had to remember. A build hook
-cannot do it for you either — hooks emit code assets, which are libraries the
-Dart runtime loads, and a web build asks for none, so the hook returns before
-reaching Rust; and a hook writes into its own output directory, never into an
-application's `web/`. So it is either a committed binary that can rot, or a
-command. It is the command.
+## Upgrading the TensorFlow Lite runtime
 
-## The TensorFlow Lite runtime
-
-This pair *is* committed, and most work never touches it. It is the TFLite C
-runtime with the XNNPACK delegate compiled to WebAssembly, built by
-[`tools/tflite-wasm`](https://github.com/wilinz/wxscan-rs/tree/main/tools/tflite-wasm)
-in wxscan-rs, whose README covers the two patches it needs, why `cmake` is run
-twice, and why the first pass is expected to fail.
-
-It only ever moves with the pinned TensorFlow version, and then it must:
+The browser's runtime has to be the same TensorFlow as every other platform's,
+or a browser runs a different one against the same `.tflite` weights. In
+wxscan-rs:
 
 ```sh
-# 1. Raise the pin. Every platform reads this.
-tool/update_tflite_lock.sh <litert-version> <desktop-version>
+# 1. Raise the pin. build.sh and CI both read this file.
+#    A new TensorFlow version resets patch to 1; a change to the patches or to
+#    build.sh at the same version raises patch instead.
+$EDITOR depversion.toml
 
-# 2. Rebuild the browser pair to match.
-source /path/to/emsdk/emsdk_env.sh
-TENSORFLOW_VERSION=<desktop-version> wxscan-rs/tools/tflite-wasm/build.sh
-cp out/wxscan_tflite.js out/wxscan_tflite.wasm \
-   packages/wxscan/lib/src/web/assets/
-
-# 3. Record what they now are.
-tool/stamp_tflite_web.sh
+# 2. Publish it. The tag has to match what that file says, or the run fails.
+git tag tflite-v<version>-p<patch> && git push origin tflite-v<version>-p<patch>
 ```
 
-Expect a quarter of an hour on the first build: it clones TensorFlow, fetches a
-dozen dependencies and compiles about a thousand XNNPACK microkernels.
+Then here:
 
-### The check that makes step 2 unavoidable
+```sh
+# 3. Raise the pin every other platform reads.
+tool/update_tflite_lock.sh <litert-version> <desktop-version>
 
-Skipping the rebuild leaves a browser running a different TFLite from every
-other platform, and nothing about that is visible at run time — it decodes
+# 4. Re-pin the browser's two files to the new release.
+tool/stamp_web.sh <scanner-tag> tflite-v<version>-p<patch>
+```
+
+[`tools/tflite-wasm`](https://github.com/wilinz/wxscan-rs/tree/main/tools/tflite-wasm)
+in wxscan-rs covers what the build does: the two patches it needs, why `cmake`
+is run twice, and why the first pass is expected to fail.
+
+### The check that makes step 4 unavoidable
+
+Skipping it leaves a browser fetching a runtime built from a different
+TensorFlow, and nothing about that is visible at run time — it decodes
 correctly and differs only where nobody looks. So it is checked instead:
 
 ```sh
 tool/check_tflite_web.sh
 ```
 
-`tool/tflite_web.lock` records the TensorFlow version the committed pair was
-built from and their checksums. The check fails when that version has drifted
-from `DESKTOP_VERSION` in `tool/tflite.lock`, and when the files are not the
-ones the record describes — someone replacing them without stamping. CI runs
-it, so neither can reach a release quietly.
+It compares the TensorFlow version inside `TFLITE_TAG` in `tool/web.lock`
+against `DESKTOP_VERSION` in `tool/tflite.lock`, and fails when they have
+drifted apart. CI runs it, so the two cannot reach a release disagreeing.
+
+The checksums are not its business: they guard the download, and `fetch_web`
+refuses anything that does not match them.
 
 ## What CI does
 
 [`.github/workflows/demo.yml`](../../../.github/workflows/demo.yml) builds the
-live demo and is the worked example. It checks out wxscan-rs beside cvlite and
-wxing, writes the same patch stanza, builds the scanner, and copies the four
-files into `web/`.
+live demo and is the worked example. It assembles the four files itself rather
+than running `fetch_web`, which is worth knowing if you script this yourself:
+running any Dart program builds the package's code assets first, and that is
+cargo for the **host** — minutes of Rust a web build has no use for, against
+path dependencies expecting sibling checkouts. On a developer's machine those
+exist and the command is the right one; in a container that only wants a web
+build, it is not.
 
-It copies rather than running `fetch_web`, for a reason worth knowing if you
-script this yourself: running any Dart program builds the package's code assets
-first, and that is cargo for the **host** — minutes of Rust that a web build
-has no use for, against path dependencies expecting sibling checkouts. On a
-developer's machine those exist and the command is the right one; in a
-container that only wants a web build, copying is.
+It reads the same `tool/web.lock`, fetches the runtime from the same release
+and checks the same checksums. The one thing it does differently is the
+scanner: it builds that from the wxscan-rs sources instead of taking the
+released one, so the demo follows main.

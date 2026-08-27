@@ -60,15 +60,15 @@ log "wrote $LOCK"
 log "the cached downloads are stale now; remove .tflite-cache and the fetched"
 log "libraries to pick up the new ones"
 
-# The browser pair is not fetched by anything: it is committed, and an
-# emscripten build. Raising the pin here is what makes it stale, so say so
-# rather than leaving check_tflite_web.sh to be the first to mention it.
+# The browser gets its runtime from a release of its own, pinned in web.lock,
+# and raising the pin here is what leaves that one behind. Say so now rather
+# than leaving check_tflite_web.sh to be the first to mention it in CI.
 if ! "${PKG_DIR}/tool/check_tflite_web.sh" >/dev/null 2>&1; then
   log ""
   log "the browser TFLite runtime no longer matches this pin."
-  log "rebuild it and stamp it - see doc/web_build.md:"
-  log "  TENSORFLOW_VERSION=\$(grep '^DESKTOP_VERSION=' tool/tflite.lock | cut -d= -f2-) \\"
-  log "    wxscan-rs/tools/tflite-wasm/build.sh"
-  log "  cp out/wxscan_tflite.* lib/src/web/assets/"
-  log "  tool/stamp_tflite_web.sh"
+  log "publish one built from this version in wxscan-rs - see doc/web_build.md:"
+  log "  raise [tensorflow] version in wxscan-rs/depversion.toml, reset patch to 1"
+  log "  git tag tflite-<version>-p1 && git push origin tflite-<version>-p1"
+  log "then re-pin it here:"
+  log "  tool/stamp_web.sh <scanner-tag> tflite-<version>-p1"
 fi

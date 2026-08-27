@@ -1,58 +1,52 @@
 #!/bin/sh
-# Checks the committed browser TFLite runtime against what the rest of the
-# package pins.
+# Checks that the browser's TensorFlow Lite runtime is the same TensorFlow as
+# every other platform's.
 #
-# The two files are an emscripten build that is committed rather than built —
-# see tool/tflite_web.lock — so nothing else would notice them drifting. Two
-# ways they can:
+# Two files pin it, and nothing connects them on its own:
 #
-#   * tflite.lock moves to a new TensorFlow and nobody rebuilds them, leaving a
-#     browser on a different runtime from every other platform; or
-#   * they are replaced without the stamp being updated, so the record of what
-#     they are stops being true.
+#   tool/tflite.lock  DESKTOP_VERSION — the runtime Android, iOS and the
+#                     desktops link against
+#   tool/web.lock     TFLITE_TAG      — the release a browser fetches
 #
-# Both are silent at run time: a mismatched runtime decodes correctly and
-# differs only in the details nobody looks at. So they are caught here.
+# Move one and not the other and a browser runs a different runtime, against
+# the same .tflite weights, from everything else. That is silent at run time:
+# it decodes correctly and differs only in the details nobody looks at. So it
+# is caught here, and CI runs this.
+#
+# The checksums in web.lock are not re-checked here. They guard the download,
+# and `dart run wxscan:fetch_web` refuses anything that does not match them —
+# there is nothing committed left for this to verify.
 set -eu
 
 PKG_DIR=$(cd "$(dirname "$0")/.." && pwd)
-ASSETS="${PKG_DIR}/lib/src/web/assets"
 
 value_of() { grep "^$1=" "$2" | head -1 | cut -d= -f2-; }
-
-sha256_of() {
-  if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
-  else sha256sum "$1" | cut -d' ' -f1
-  fi
-}
-
 fail() { echo "check_tflite_web: $*" >&2; exit 1; }
 
 pinned=$(value_of DESKTOP_VERSION "${PKG_DIR}/tool/tflite.lock")
-built=$(value_of TENSORFLOW_VERSION "${PKG_DIR}/tool/tflite_web.lock")
+tag=$(value_of TFLITE_TAG "${PKG_DIR}/tool/web.lock")
 
 [ -n "$pinned" ] || fail "tflite.lock has no DESKTOP_VERSION"
-[ -n "$built" ] || fail "tflite_web.lock has no TENSORFLOW_VERSION"
+[ -n "$tag" ] || fail "web.lock has no TFLITE_TAG"
 
-if [ "$pinned" != "$built" ]; then
-  fail "the browser runtime is TensorFlow $built, but this package pins
-                    $pinned everywhere else. Rebuild it with
-                    wxscan-rs/tools/tflite-wasm/build.sh and run
-                    tool/stamp_tflite_web.sh $pinned"
+# tflite-<tensorflow-version>-p<patch>. The patch revision is wxscan-rs's own —
+# it counts the patches applied on top of that TensorFlow, which change while
+# the version stays put — so only the middle is compared.
+case "$tag" in
+  tflite-*-p*) ;;
+  *) fail "TFLITE_TAG is '$tag', which is not
+                    tflite-<version>-p<patch>. web.lock is written by
+                    tool/stamp_web.sh; do not edit it by hand." ;;
+esac
+
+web=${tag#tflite-}
+web=${web%-p*}
+
+if [ "$pinned" != "$web" ]; then
+  fail "the browser fetches TensorFlow $web ($tag), but this package pins
+                    $pinned everywhere else. Publish a runtime built from
+                    $pinned in wxscan-rs, then re-pin it here with
+                    tool/stamp_web.sh <scanner-tag> <tflite-tag>"
 fi
 
-for pair in "js:wxscan_tflite.js" "wasm:wxscan_tflite.wasm"; do
-  key="SHA256_${pair%%:*}"
-  file="${ASSETS}/${pair#*:}"
-  [ -f "$file" ] || fail "$file is missing"
-  want=$(value_of "$key" "${PKG_DIR}/tool/tflite_web.lock")
-  got=$(sha256_of "$file")
-  if [ "$want" != "$got" ]; then
-    fail "${pair#*:} is not what tflite_web.lock records.
-                    recorded $want
-                    found    $got
-                    If it was rebuilt on purpose, run tool/stamp_tflite_web.sh"
-  fi
-done
-
-echo "check_tflite_web: browser runtime is TensorFlow $built, as pinned"
+echo "check_tflite_web: the browser runtime is TensorFlow $web ($tag), as pinned"
