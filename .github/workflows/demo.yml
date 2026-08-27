@@ -31,6 +31,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The scanner's own WebAssembly is built here from the Rust sources
+      # rather than taken from the copy committed in the package. That copy is
+      # for people installing from pub.dev, who have no Rust toolchain — and it
+      # is a file that can fall behind the sources it came from, which it did:
+      # the demo served a detector bug for a while after Rust had been fixed.
+      # A build takes seconds and cannot be out of step with anything.
+      #
+      # cvlite and wxing are not on crates.io yet, so they are checked out
+      # beside wxscan-rs and patched in exactly as wxscan-dev/link.sh does on a
+      # developer's machine — the same wiring, so CI builds what they build.
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/wxscan-rs, path: _rust/wxscan-rs }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/cvlite, path: _rust/cvlite }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/wxing, path: _rust/wxing }
+
+      - name: Build the scanner for the browser
+        working-directory: ${{ github.workspace }}/_rust/wxscan-rs
+        run: |
+          mkdir -p .cargo
+          printf '[patch.crates-io]\ncvlite = { path = "../cvlite" }\nwxing = { path = "../wxing" }\n' > .cargo/config.toml
+          rustup target add wasm32-unknown-unknown
+          # Costs nothing in correctness and takes about 28% off scanning time.
+          RUSTFLAGS="-C target-feature=+simd128" \
+            cargo build -p wxscan-wasm --target wasm32-unknown-unknown --profile wasm
+
       # Pinned, and not below 3.44: earlier engines show a white screen on
       # rotation in a browser, which there is no working around from Dart.
       - uses: subosito/flutter-action@v2
@@ -58,6 +85,13 @@ jobs:
           mkdir -p web/wxscan
           cp ../../wxscan/lib/src/web/assets/* web/wxscan/
           test "$(ls web/wxscan | wc -l)" -ge 4
+          # The one that was just built wins over the committed copy. The
+          # TFLite runtime beside it is not built here: emscripten, a clone of
+          # TensorFlow and a thousand XNNPACK microkernels, a quarter of an
+          # hour at best, and it moves only when the pinned TFLite version
+          # does. That pair stays as committed.
+          cp "${{ github.workspace }}/_rust/wxscan-rs/target/wasm32-unknown-unknown/wasm/wxscan_wasm.wasm" \
+             web/wxscan/wxscan_wasm.wasm
           ls -l web/wxscan
 
       # A project page is served from a subdirectory, and every URL the built
