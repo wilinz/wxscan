@@ -1,0 +1,43 @@
+[package]
+name = "wxscan_core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+build = "build.rs"
+
+[lib]
+name = "wxscan_core"
+crate-type = ["cdylib", "staticlib"]
+
+# This crate sits on top of four crates spread over three sibling repositories,
+# and the two lines below have two forms. In development they are paths into
+# the wxscan-rs checkout, paired with the [patch.crates-io] block at the end of
+# this file; for publishing they are plain crates.io versions and the patch
+# block is gone, because that is the only form installable from pub.dev.
+#
+# `publish_kit release-deps` and `publish_kit restore-dev` switch between them.
+# Both rewrite by key and refuse a manifest they do not recognise, so edit the
+# shape here at your own risk.
+[dependencies]
+wxscan-ffi = { path = "../../../../wxscan-rs/crates/wxscan-ffi" }
+wxscan = { path = "../../../../wxscan-rs/crates/wxscan" }
+# Used by the Android binding to convert GB2312 payloads for display.
+encoding_rs = "0.8"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = { version = "0.21", default-features = false }
+
+[profile.release]
+opt-level = 3
+lto = true
+
+# Development only, removed by `publish_kit release-deps`.
+#
+# This lives in the manifest rather than in .cargo/config.toml because
+# the build hook invokes cargo with --manifest-path from the Flutter
+# project's directory, and cargo discovers config files from the
+# process working directory, not from the manifest. A config file next
+# to this one would simply never be read.
+[patch.crates-io]
+cvlite = { path = "../../../../cvlite" }
+wxing = { path = "../../../../wxing" }

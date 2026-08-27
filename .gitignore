@@ -1,0 +1,30 @@
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+**/generated_plugin_registrant.*
+pubspec.lock
+
+# Native build output
+**/Pods/
+**/Podfile.lock
+**/.gradle/
+**/local.properties
+*.iml
+
+# IDE
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+
+# Superseded layout, kept until the split is confirmed; safe to delete.
+.old/
+
+# Path overrides for cross-repository development, written by wxscan-dev/link.sh.
+# Never committed: it names sibling checkouts that only exist on a dev machine,
+# and cargo hard-errors when a path override points at a missing directory.
+packages/wxscan_core/rust/.cargo/config.toml

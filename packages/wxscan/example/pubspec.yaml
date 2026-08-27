@@ -1,0 +1,44 @@
+name: wxscan_example
+description: "Demo for the wxscan plugin: live scanning, image decoding, and the multi-code picker."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  permission_handler: ^13.0.1
+  image_picker: ^1.1.2
+  image: ^4.2.0
+  wxscan:
+    path: ../
+  wxscan_core:
+    path: ../../wxscan_core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    # Converted from the published Caffe models by tools/model_conversion in
+    # the wxscan-rs repository.
+    - assets/models/detect.tflite
+    - assets/models/sr.tflite
+    # Sample image for the startup self-test.
+    - assets/test/qr_sample.png
+
+# The example builds against this checkout, not against pub.dev. wxscan depends
+# on wxscan_core by a hosted constraint so that it can be published, and this
+# points both back here.
+dependency_overrides:
+  wxscan:
+    path: ../
+  wxscan_core:
+    path: ../../wxscan_core

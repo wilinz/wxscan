@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Modify this file to customize your launch splash screen -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 黑底：和扫码界面一致，也避免启动/转屏时露白 -->
+    <item android:drawable="@android:color/black" />
+</layer-list>

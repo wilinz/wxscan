@@ -1,0 +1,108 @@
+# wxscan_core
+
+QR decoding for Flutter, backed by a Rust port of the `wechat_qrcode` algorithm:
+CNN-based detection, super resolution, and decoding.
+
+This package decodes images and raw pixel buffers. It does not open a camera —
+for live scanning use [`wxscan`](https://pub.dev/packages/wxscan), which drives
+the camera natively and builds the same Rust crate for its own link step.
+
+It is a plain Dart package, not a Flutter plugin: the native library is built
+and bundled by a [build hook](https://dart.dev/tools/hooks), so it works under
+`dart run` and `dart test` as well as in a Flutter application, and there are no
+platform build files to maintain.
+
+## Usage
+
+```dart
+final scanner = await WxScanner.create(
+  detectModel: detectBytes,
+  srModel: srBytes,
+);
+
+final outcome = await scanner.scanGray(gray, width, height);
+for (final r in outcome.results) {
+  print('${r.text} (v${r.version}/${r.ecLevel}/${r.charset})');
+}
+
+scanner.dispose();
+```
+
+Creating a scanner is expensive, since it builds a TFLite interpreter, so keep
+one for as long as you are scanning. One instance decodes one image at a time;
+concurrent calls are serialized natively, and several instances scan in
+parallel.
+
+The asynchronous methods run in a background isolate, so a large image does not
+block the UI. `scanGraySync` and `scanFrameSync` are for callers already off the
+main isolate. Dropping a scanner without `dispose()` still releases it, but only
+when the garbage collector gets to it, which keeps the models in memory
+meanwhile.
+
+For camera frames, `scanFrame` takes a row stride, a rotation, and a `mirror`
+flag that mirrors the returned x coordinates. The frame itself is never
+mirrored, because the detector is trained on unmirrored input; the flag exists
+so coordinates line up with a preview displayed mirrored.
+
+## Results
+
+Coordinates are `ScanPoint`, not `dart:ui`'s `Offset`: this package is plain
+Dart and cannot depend on Flutter. The field names match, so a Flutter caller
+writes `Offset(p.dx, p.dy)`.
+
+`ScanResult` carries both `text` and `bytes`. QR content is not required to be
+text, so `bytes` is authoritative; `text` is it decoded according to `charset`,
+which the decoder reports as `UTF-8` or `GB2312` without converting.
+
+`ScanOutcome.candidates` holds what the detector found. Candidates without
+results — `hasUndecodable` — mean a symbol was located but could not be decoded,
+usually because it is too small or too blurred. Zooming in is a better response
+than reporting a failure.
+
+## Models
+
+The TFLite weights are not bundled; pass them in as bytes, typically from an
+asset. Passing null for both selects the mode without models, and a model that
+fails to load falls back to that mode rather than throwing. Decoding still works
+there; what it loses is the detection rate on small or distant symbols, which is
+what the CNN stages contribute. `hasModels` reports which mode is active.
+
+## The build hook
+
+`hook/build.dart` does everything the platform build systems used to: it
+downloads the TFLite C library, builds the Rust crate in `rust/`, and declares
+both as code assets. The Dart tooling then places them together and rewrites the
+dependency between them, so nothing has to arrange an rpath.
+
+CNN inference uses the TFLite C library, which is downloaded at build time
+rather than shipped here. Every artifact is pinned by version and SHA-256 in
+`tool/tflite.lock`; a mismatch fails the build. To upgrade, run
+`tool/update_tflite_lock.sh <litert-version> <desktop-version>`, which
+re-downloads each artifact and rewrites the checksums. Editing that file is the
+only way to point at a different build: the hook runner scrubs the environment,
+so nothing there is consulted.
+
+| Platform | Source |
+|---|---|
+| Android | Google Maven, `com.google.ai.edge.litert:litert` |
+| iOS | the release channel the TensorFlowLiteC pod serves — a static framework, so it is linked into the Rust library rather than bundled beside it |
+| macOS, Linux, Windows | prebuilt release; there is no official desktop distribution, so the repository is named in `tflite.lock` |
+
+Downloads are cached in the hook's shared output directory, so only the first
+build pays for them. That build also compiles the Rust sources, which takes a
+few minutes; later builds are incremental.
+
+## Platforms
+
+| Platform | Notes |
+|---|---|
+| Android | arm64-v8a, armeabi-v7a, x86_64. LiteRT publishes no 32-bit x86 build, so an application targeting that ABI must exclude it. |
+| iOS | 13.0+ |
+| macOS | 10.15+, arm64 |
+| Linux, Windows | x86_64 (Linux also arm64) |
+| Dart (no Flutter) | macOS, Linux, Windows — `dart run` and `dart test` build and load the library through the hook |
+
+## Licence
+
+Apache-2.0. The Rust sources are in
+[wxscan-rs](https://github.com/wilinz/wxscan-rs).

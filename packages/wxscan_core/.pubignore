@@ -1,0 +1,5 @@
+# pub falls back to .gitignore only inside a git repository, and this tree is
+# not one yet, so what must stay out of the archive is listed here.
+.dart_tool/
+build/
+rust/target/
