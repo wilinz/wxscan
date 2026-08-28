@@ -99,7 +99,7 @@ jobs:
         run: |
           lock=../../wxscan/tool/web.lock
           value() { grep "^$1=" "$lock" | head -1 | cut -d= -f2-; }
-          repo=$(value REPO)
+          repo=$(value TFLITE_REPO)
           tag=$(value TFLITE_TAG)
 
           mkdir -p web/wxscan

@@ -16,10 +16,10 @@
 /// ));
 /// ```
 ///
-/// Of the four, `wxscan_worker.js` is this package's own; the rest are built
-/// in the wxscan-rs repository — `wxscan_wasm.wasm` by `crates/wxscan-wasm`,
-/// and the `wxscan_tflite.js` and `wxscan_tflite.wasm` pair by
-/// `tools/tflite-wasm`. Only the loader of that pair takes a URL, since it
+/// Of the four, `wxscan_worker.js` is this package's own; the rest are
+/// compiled elsewhere — `wxscan_wasm.wasm` by `crates/wxscan-wasm` in
+/// wxscan-rs, and the `wxscan_tflite.js` and `wxscan_tflite.wasm` pair by
+/// wxscan-litert-wasm. Only the loader of that pair takes a URL, since it
 /// fetches the module beside itself, and the two must keep their names: the
 /// loader has its module's file name compiled into it.
 library;

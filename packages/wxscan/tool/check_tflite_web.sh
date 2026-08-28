@@ -29,23 +29,28 @@ tag=$(value_of TFLITE_TAG "${PKG_DIR}/tool/web.lock")
 [ -n "$pinned" ] || fail "tflite.lock has no DESKTOP_VERSION"
 [ -n "$tag" ] || fail "web.lock has no TFLITE_TAG"
 
-# tflite-<tensorflow-version>-p<patch>. The patch revision is wxscan-rs's own —
+# <tensorflow-version>-b<revision>. The revision is the build repository's own —
 # it counts the patches applied on top of that TensorFlow, which change while
-# the version stays put — so only the middle is compared.
+# the version stays put — so only the version is compared.
+#
+# tflite-<version>-p<patch> is the same thing under its old name, from when the
+# runtime was built in wxscan-rs rather than in a repository of its own. It is
+# accepted until the pin moves to a release of the new one, and can go then.
 case "$tag" in
-  tflite-*-p*) ;;
+  v*-b*|tflite-v*-p*) ;;
   *) fail "TFLITE_TAG is '$tag', which is not
-                    tflite-<version>-p<patch>. web.lock is written by
+                    <version>-b<revision>. web.lock is written by
                     tool/stamp_web.sh; do not edit it by hand." ;;
 esac
 
 web=${tag#tflite-}
+web=${web%-b*}
 web=${web%-p*}
 
 if [ "$pinned" != "$web" ]; then
   fail "the browser fetches TensorFlow $web ($tag), but this package pins
                     $pinned everywhere else. Publish a runtime built from
-                    $pinned in wxscan-rs, then re-pin it here with
+                    $pinned in wxscan-litert-wasm, then re-pin it here with
                     tool/stamp_web.sh <scanner-tag> <tflite-tag>"
 fi
 

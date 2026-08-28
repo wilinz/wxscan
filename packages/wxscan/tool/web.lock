@@ -5,7 +5,9 @@
 # live demo served a fixed detector bug for a while, because rebuilding it was
 # a step someone had to remember.
 #
-# So they are built by CI in wilinz/wxscan-rs and fetched from its releases.
+# So they are built by CI and fetched from releases — the scanner from
+# wilinz/wxscan-rs, the runtime from wilinz/wxscan-litert-wasm, which are two
+# repositories because the two move on different rhythms.
 # `dart run wxscan:fetch_web` does that, and refuses anything whose checksum
 # is not below: a release can be replaced, and a package that trusted whatever
 # a URL served would not be pinning anything.
@@ -15,16 +17,21 @@
 #
 # To move to newer artifacts: tool/stamp_web.sh <scanner-tag> <tflite-tag>
 #
-# TFLITE_TAG is tflite-<tensorflow-version>-p<patch>. The version has to be the
-# one this package pins for every other platform, and tool/check_tflite_web.sh
-# says so; the patch revision is wxscan-rs's own, counting the patches built on
+# TFLITE_TAG is <tensorflow-version>-b<revision>. The version has to be the one
+# this package pins for every other platform, and tool/check_tflite_web.sh says
+# so; the revision is the build repository's own, counting the patches built on
 # top of that TensorFlow, which change while the version stays put.
+#
+# The runtime pinned below is still the one wxscan-rs published before that
+# build moved out into a repository of its own, under the old name that release
+# carries. The next tool/stamp_web.sh moves it, and the bytes it names are what
+# decide when: a lock file follows a release, it does not announce one.
 
-REPO=wilinz/wxscan-rs
-
+SCANNER_REPO=wilinz/wxscan-rs
 SCANNER_TAG=v0.1.0
 SCANNER_SHA256=5ca889120cd62313238af3ac14dd4bfb2eaa63325b1832de96449c900649dcdb
 
+TFLITE_REPO=wilinz/wxscan-rs
 TFLITE_TAG=tflite-v2.17.1-p2
 TFLITE_JS_SHA256=fa08b041c6e6c58fb1085a6ecfb88fe3227ce65a551fe1bd0b28d33bec38b369
 TFLITE_WASM_SHA256=48ab50a9a3bf2f8a7b27e96db185444cf7b8a732d70511175d1af7fc74730651

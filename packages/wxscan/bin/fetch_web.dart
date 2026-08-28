@@ -13,12 +13,14 @@
 /// was a step someone had to remember. Anything that has to be remembered
 /// eventually is not.
 ///
-/// So they are built by CI in wxscan-rs and fetched from its releases, pinned
-/// by tag and checksum in `tool/web.lock`. Two releases rather than one,
-/// because the scanner changes with every push there while the runtime moves
-/// only when the pinned TensorFlow version does — many scanner versions point
-/// at one runtime. Nothing has to be built to use this package in a browser,
-/// and nothing can quietly rot either.
+/// So they are built by CI and fetched from releases, pinned by repository,
+/// tag and checksum in `tool/web.lock`. Two repositories rather than one,
+/// because the two move on different rhythms: the scanner is wxscan-rs's own
+/// code and changes with every push there, while the runtime is a dependency
+/// built in wxscan-litert-wasm and moves only when the pinned TensorFlow
+/// version or the patches on top of it do — many scanner versions point at one
+/// runtime. Nothing has to be built to use this package in a browser, and
+/// nothing can quietly rot either.
 ///
 /// The fourth comes from here: `wxscan_worker.js` is hand-written and moves
 /// with this package rather than with Rust.
@@ -113,11 +115,11 @@ Future<int> _run(List<String> args) async {
       continue;
     }
 
-    final (tag, want) = lock.pin(artifact);
+    final (repo, tag, want) = lock.pin(artifact);
     final File file;
     try {
       file = await _fetch(
-        repo: lock.repo,
+        repo: repo,
         tag: tag,
         name: artifact.name,
         want: want,
@@ -219,17 +221,17 @@ class _FetchFailure implements Exception {
 /// artifacts it does not carry.
 class _Lock {
   const _Lock({
-    required this.repo,
+    required this.scannerRepo,
     required this.scannerTag,
     required this.scannerSha,
+    required this.tfliteRepo,
     required this.tfliteTag,
     required this.tfliteJsSha,
     required this.tfliteWasmSha,
   });
 
-  final String repo;
-  final String scannerTag, scannerSha;
-  final String tfliteTag, tfliteJsSha, tfliteWasmSha;
+  final String scannerRepo, scannerTag, scannerSha;
+  final String tfliteRepo, tfliteTag, tfliteJsSha, tfliteWasmSha;
 
   static _Lock read(File file) {
     if (!file.existsSync()) throw FormatException('${file.path} is missing');
@@ -243,19 +245,20 @@ class _Lock {
     String need(String key) =>
         values[key] ?? (throw FormatException('${file.path} has no $key'));
     return _Lock(
-      repo: need('REPO'),
+      scannerRepo: need('SCANNER_REPO'),
       scannerTag: need('SCANNER_TAG'),
       scannerSha: need('SCANNER_SHA256'),
+      tfliteRepo: need('TFLITE_REPO'),
       tfliteTag: need('TFLITE_TAG'),
       tfliteJsSha: need('TFLITE_JS_SHA256'),
       tfliteWasmSha: need('TFLITE_WASM_SHA256'),
     );
   }
 
-  (String, String) pin(_Artifact artifact) => switch (artifact) {
-        _Artifact.scanner => (scannerTag, scannerSha),
-        _Artifact.tfliteJs => (tfliteTag, tfliteJsSha),
-        _Artifact.tfliteWasm => (tfliteTag, tfliteWasmSha),
+  (String, String, String) pin(_Artifact artifact) => switch (artifact) {
+        _Artifact.scanner => (scannerRepo, scannerTag, scannerSha),
+        _Artifact.tfliteJs => (tfliteRepo, tfliteTag, tfliteJsSha),
+        _Artifact.tfliteWasm => (tfliteRepo, tfliteTag, tfliteWasmSha),
         _Artifact.worker => throw StateError('the worker is not fetched'),
       };
 }

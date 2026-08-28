@@ -278,8 +278,8 @@ web 构建是同一套算法、同一批权重，编成 WebAssembly，跑在 wor
 
 `wxscan_wasm.wasm` 不随包分发，旁边那个 TensorFlow Lite 运行时也不。编译产物提交在
 源码旁边，迟早会跟源码脱节——这一个就脱过：Rust 那边检测器的 bug 早修好了，在线演示还
-供了一阵子旧的，就因为重编是件得靠人记得的事。所以两者都由 wxscan-rs 的 CI 构建、从
-它的 release 拿，应用只需要 `fetch_web` 一条命令。
+供了一阵子旧的，就因为重编是件得靠人记得的事。所以两者都由 CI 构建、从各自的 release
+拿——扫描器在 wxscan-rs，运行时在 wxscan-litert-wasm——应用只需要 `fetch_web` 一条命令。
 
 想试 Rust 那边的改动、不等发布，就自己编：
 
@@ -297,8 +297,9 @@ RUSTFLAGS="-C target-feature=+simd128" cargo build -p wxscan-wasm \
 然后 `--from wxscan-rs/target/wasm32-unknown-unknown/wasm`。那个目录里有什么就用什么，
 其余的照旧从 release 拿，所以只编扫描器——通常就是这种情况——不用管别的。
 
-TensorFlow Lite 运行时要动 emsdk，一编一刻钟。它有自己的 release，在 `tflite-` 开头的
-tag 下；好多个版本的扫描器指向同一个，因为只有钉死的 TFLite 版本变了它才会变。
+TensorFlow Lite 运行时要动 emsdk，一编一刻钟。它在自己的仓库
+[wxscan-litert-wasm](https://github.com/wilinz/wxscan-litert-wasm) 里构建和发布；好多个
+版本的扫描器指向同一个，因为只有钉死的 TFLite 版本变了它才会变。
 `tool/check_tflite_web.sh` 就是防它在那种时候被落下的。
 
 四个文件分别是什么、运行时怎么升级、CI 哪里做得不一样，全在

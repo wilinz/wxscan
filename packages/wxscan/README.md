@@ -325,8 +325,9 @@ page. `WxScanner` is the same class with the same methods; what differs:
 beside it. A compiled artifact committed next to the sources it came from goes
 out of step with them — this one did, and the live demo served a fixed detector
 bug for a while because rebuilding it was a step someone had to remember. So
-both are built by CI in wxscan-rs and fetched from its releases, and `fetch_web`
-on its own is all an application needs.
+both are built by CI — the scanner in wxscan-rs, the runtime in
+wxscan-litert-wasm — and fetched from their releases, and `fetch_web` on its
+own is all an application needs.
 
 Build it yourself to try a change to the Rust without waiting for a release:
 
@@ -345,9 +346,11 @@ Then `--from wxscan-rs/target/wasm32-unknown-unknown/wasm`. Whatever that
 directory holds is taken from it and the rest still comes from the releases, so
 building only the scanner — the usual case — needs nothing else.
 
-The TensorFlow Lite runtime is an emsdk and a quarter of an hour, and it has a
-release of its own under a `tflite-` tag, which many versions of the scanner
-point at because it moves only when the pinned TFLite version does.
+The TensorFlow Lite runtime is an emsdk and a quarter of an hour, and it is
+built and released in a repository of its own,
+[wxscan-litert-wasm](https://github.com/wilinz/wxscan-litert-wasm), which many
+versions of the scanner point at because it moves only when the pinned TFLite
+version does.
 `tool/check_tflite_web.sh` fails if it has been left behind when that
 happened.
 

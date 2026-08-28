@@ -39,24 +39,31 @@ package, and `dart run` and `dart test` would stop working.
 
 So it is either a committed binary that can rot, or a download that cannot.
 
-## Two releases, not one
+## Two repositories, not one
 
 The scanner and the runtime are pinned separately, because they move on
 different rhythms:
 
 * **The scanner** is wxscan-rs's own code. It is rebuilt on every push there,
   and takes seconds.
-* **The TensorFlow Lite runtime** is a dependency. Building it is an emsdk, a
-  clone of TensorFlow and about a thousand XNNPACK microkernels — ten minutes
-  at best — and it changes a few times a year. Many scanner versions point at
-  one runtime release rather than each carrying its own 1.3 MB copy.
+* **The TensorFlow Lite runtime** is a dependency, built in
+  [wxscan-litert-wasm](https://github.com/wilinz/wxscan-litert-wasm). Building
+  it is an emsdk, a clone of TensorFlow and about a thousand XNNPACK
+  microkernels — ten minutes at best — and it changes a few times a year. Many
+  scanner versions point at one runtime release rather than each carrying its
+  own 1.3 MB copy.
 
-`TFLITE_TAG` is `tflite-<tensorflow-version>-p<patch>`. The patch revision is
-wxscan-rs's own: upstream does not build this configuration, so what comes out
+`TFLITE_TAG` is `<tensorflow-version>-b<revision>`. The revision is that
+repository's own: upstream does not build this configuration, so what comes out
 of a given TensorFlow version is decided as much by the patches applied on top
 of it as by the version, and those change while the version stays put. Two
 runtimes that differ only in patches therefore get different tags rather than
 sharing one.
+
+The pin still names a `tflite-<version>-p<patch>` release of wxscan-rs, which
+is where this runtime was built before it moved out. It moves to the new
+repository's releases the next time `tool/stamp_web.sh` runs: a lock file
+follows a release rather than announcing one.
 
 ## Building the scanner yourself
 
@@ -92,16 +99,16 @@ the compiler, so with no local change this is the same module CI publishes.
 
 The browser's runtime has to be the same TensorFlow as every other platform's,
 or a browser runs a different one against the same `.tflite` weights. In
-wxscan-rs:
+wxscan-litert-wasm:
 
 ```sh
 # 1. Raise the pin. build.sh and CI both read this file.
-#    A new TensorFlow version resets patch to 1; a change to the patches or to
-#    build.sh at the same version raises patch instead.
-$EDITOR depversion.toml
+#    A new TensorFlow version resets revision to 1; a change to the patches or
+#    to build.sh at the same version raises revision instead.
+$EDITOR tflite.toml
 
 # 2. Publish it. The tag has to match what that file says, or the run fails.
-git tag tflite-v<version>-p<patch> && git push origin tflite-v<version>-p<patch>
+git tag v<version>-b<revision> && git push origin v<version>-b<revision>
 ```
 
 Then here:
@@ -111,12 +118,12 @@ Then here:
 tool/update_tflite_lock.sh <litert-version> <desktop-version>
 
 # 4. Re-pin the browser's two files to the new release.
-tool/stamp_web.sh <scanner-tag> tflite-v<version>-p<patch>
+tool/stamp_web.sh <scanner-tag> v<version>-b<revision>
 ```
 
-[`tools/tflite-wasm`](https://github.com/wilinz/wxscan-rs/tree/main/tools/tflite-wasm)
-in wxscan-rs covers what the build does: the two patches it needs, why `cmake`
-is run twice, and why the first pass is expected to fail.
+That repository's [README](https://github.com/wilinz/wxscan-litert-wasm) covers
+what the build does: the two patches it needs, why `cmake` is run twice, and
+why the first pass is expected to fail.
 
 ### The check that makes step 4 unavoidable
 
