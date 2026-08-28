@@ -29,12 +29,24 @@ class Scanner {
   static WxScanner? _scanner;
   static bool _nnEnabled = false;
 
-  /// Model bytes, kept so they can be handed to [WxScan.initialize].
+  /// Model bytes. Kept only for the fallback below — the camera normally
+  /// borrows the scanner these were already loaded into.
   static Uint8List? detectModel;
   static Uint8List? srModel;
 
   /// Whether the CNN detector is active, which requires the models to load.
   static bool get nnEnabled => _nnEnabled;
+
+  /// The scanner, for the camera to decode with as well.
+  ///
+  /// Handing this to a `WxScanController` is what keeps this application to one
+  /// scanner. Without it the camera builds its own, and there are two copies of
+  /// the CNN weights in memory and two sets of thresholds — so tuning the
+  /// detector for pictures from the library would leave the live camera
+  /// unchanged, which is the kind of thing nobody notices for a week.
+  ///
+  /// Null before [init].
+  static WxScanner? get instance => _scanner;
 
   /// Loads the TFLite models from assets and creates the scanner.
   ///
@@ -249,8 +261,9 @@ class Scanner {
       for (final p in gray) {
         buf[i++] = p.r.toInt();
       }
+      // The binding's frame path, without a camera: nothing is opened here.
       final outcome =
-          await WxScan.selfTestNative(buf, gray.width, gray.height);
+          await WxScanController.selfTestNative(buf, gray.width, gray.height);
       final first = outcome.results.isEmpty ? null : outcome.results.first;
       final msg = 'selftest-native: ${first?.text ?? 'nothing found'}';
       _log(msg);

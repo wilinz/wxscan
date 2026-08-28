@@ -58,6 +58,10 @@ class WxScanWeb extends WxScanPlatform {
     required int shortSide,
     Uint8List? detectModel,
     Uint8List? srModel,
+    // Ignored here. A browser has no handle to lend: the scanner is a worker,
+    // reached by message, and this implementation starts its own. Nothing is
+    // duplicated either way, so there is nothing to share.
+    int scannerHandle = 0,
   }) async {
     await dispose();
 

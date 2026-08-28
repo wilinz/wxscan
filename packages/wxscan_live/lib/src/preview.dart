@@ -22,12 +22,13 @@ const wxScanPreviewViewType = 'wxscan_live/preview';
 /// The live camera image.
 ///
 /// ```dart
-/// SizedBox(
-///   width: size.width.toDouble(),
-///   height: size.height.toDouble(),
-///   child: WxScanPreview(info: info),
-/// )
+/// WxScanPreview(controller: controller)
 /// ```
+///
+/// It listens to the controller, so it appears when the camera opens and
+/// follows a rotation without anything else being wired up. Before the camera
+/// is open it is an empty box rather than an error, which is what a screen
+/// wants while it is starting.
 ///
 /// This is the image and nothing else. Everything a scanning screen puts over
 /// it — the viewfinder, the corners drawn on each decoded code, picking among
@@ -37,13 +38,21 @@ const wxScanPreviewViewType = 'wxscan_live/preview';
 /// a complete one to read or copy. It is also what the
 /// [live demo](https://wilinz.github.io/wxscan/) is running.
 class WxScanPreview extends StatelessWidget {
-  const WxScanPreview({super.key, required this.info});
+  const WxScanPreview({super.key, required this.controller});
 
-  /// What the camera reported when it started.
-  final WxScanCameraInfo info;
+  /// The camera to show.
+  final WxScanController controller;
 
   @override
-  Widget build(BuildContext context) => kIsWeb
-      ? const HtmlElementView(viewType: wxScanPreviewViewType)
-      : Texture(textureId: info.textureId);
+  Widget build(BuildContext context) => ValueListenableBuilder<WxScanValue>(
+        valueListenable: controller,
+        builder: (context, value, _) {
+          if (!value.isInitialized) return const SizedBox.shrink();
+          return kIsWeb
+              // The browser's frames are in a <video> the platform view holds,
+              // so there is no texture id to give and nothing to rebuild on.
+              ? const HtmlElementView(viewType: wxScanPreviewViewType)
+              : Texture(textureId: value.textureId);
+        },
+      );
 }

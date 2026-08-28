@@ -59,18 +59,24 @@ Future<Uint8List> _asset(String path) async {
   return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
 }
 
-final info = await WxScan.initialize(
-  resolution: WxResolution.p720,
+final controller = WxScanController(resolution: WxResolution.p720);
+await controller.initialize(
   detectModel: await _asset('assets/models/detect.tflite'),
   srModel: await _asset('assets/models/sr.tflite'),
 );
 
-WxScan.scanStream.listen((outcome) {
+controller.scans.listen((outcome) {
   for (final r in outcome.results) {
     print(r.text);
   }
 });
 ```
+
+`WxScanController` is a `ValueNotifier<WxScanValue>`, the shape
+`CameraController` and `CameraValue` have: every setter awaits the platform and
+then publishes what the device actually did, so `controller.value.zoom` is the
+ratio in effect rather than the one asked for. Listen to it, or hand it to a
+`ValueListenableBuilder`, and the screen follows.
 
 **4. Show the preview.** `WxScanPreview` is the image and nothing else — a
 texture natively, a platform view in a browser — held upright in the device's
@@ -78,10 +84,10 @@ natural orientation, so whatever the screen has rotated to is made up around
 it:
 
 ```dart
-StreamBuilder<WxPreviewSize>(
-  stream: WxScan.previewSizeStream,
-  builder: (context, snapshot) {
-    final size = snapshot.data;
+ValueListenableBuilder<WxScanValue>(
+  valueListenable: controller,
+  builder: (context, value, _) {
+    final size = value.previewSize;
     if (size == null) return const SizedBox.shrink();
     return ClipRect(
       child: FittedBox(
@@ -97,7 +103,7 @@ StreamBuilder<WxPreviewSize>(
             child: SizedBox(
               width: size.width.toDouble(),
               height: size.height.toDouble(),
-              child: WxScanPreview(info: info),
+              child: WxScanPreview(controller: controller),
             ),
           ),
         ),
@@ -107,13 +113,14 @@ StreamBuilder<WxPreviewSize>(
 );
 ```
 
-Subscribe to `previewSizeStream` rather than reading the size once: it emits
-again when the screen rotates, and on a device that fell back to a different
-capture size than the one asked for.
+Build from the controller rather than reading `previewSize` once: it changes
+when the screen rotates, and on a device that fell back to a different capture
+size than the one asked for.
 
-Call `WxScan.dispose()` when leaving the screen. `setScanning(false)` pauses
-decoding while leaving the camera and preview running, which is what you want
-while a result sheet is up.
+Call `controller.dispose()` when leaving the screen — a controller left
+undisposed holds the camera open. `setScanning(false)` pauses decoding while
+leaving the camera and preview running, which is what you want while a result
+sheet is up.
 
 [`packages/wxscan_live/example`](example) is a working application doing all of the
 above, plus torch, zoom, decoding from the photo library and picking among
@@ -184,7 +191,7 @@ final (x, y) = switch (size.quarterTurns) {
   3 => (1 - ry, rx),
   _ => (rx, ry),
 };
-await WxScan.focusAt(x, y);
+await controller.focusAt(x, y);
 ```
 
 A `ScanResult`'s own coordinates are in the scanned frame, which is upright
@@ -203,16 +210,15 @@ battery and produces frames nobody sees:
 ```dart
 @override
 void didChangeAppLifecycleState(AppLifecycleState state) {
-  WxScan.setScanning(state == AppLifecycleState.resumed);
+  controller.setScanning(state == AppLifecycleState.resumed);
 }
 ```
 
 **`setScanning(false)`, not `dispose()`, for a pause.** It stops decoding and
 leaves the camera and the preview running, which is what a result sheet or a
-pushed page wants. `dispose()` is for leaving the screen, and every screen that
-initialises must call it — a second `initialize` while one is still open
-returns the camera already running rather than opening a second one, but a
-screen that never disposes keeps the camera for the life of the process.
+pushed page wants. `dispose()` is for leaving the screen, and every controller
+that initialises must be disposed — the device has one camera session, so a
+controller that outlives its screen holds it against the next one.
 
 **Treat `hasUndecodable` as "move closer", not as failure.** A candidate with
 no result means the detector found a symbol the decoder could not read — almost
@@ -252,11 +258,36 @@ without a device.
 ## Models
 
 The TFLite weights are passed to `initialize`, typically from an asset. The
-plugin loads them into a scanner it owns; that scanner is separate from any held
-by `wxscan`, since this path never goes through Dart. Omitting them, or
-passing weights that fail to load, falls back to decoding without the CNN stages
-rather than failing — `WxScanCameraInfo.modelsLoaded` reports which mode is
-active.
+plugin loads them into a scanner it owns, on the native side, since this path
+never goes through Dart. Omitting them, or passing weights that fail to load,
+falls back to decoding without the CNN stages rather than failing —
+`controller.value.modelsLoaded` reports which mode is active.
+
+### Sharing one scanner
+
+An application that scans both live and from the photo library otherwise holds
+two scanners: two copies of the CNN weights in memory, and two sets of
+thresholds that drift apart the moment one is tuned. Lend the camera the
+scanner you already have and there is only ever one:
+
+```dart
+final scanner = await WxScanner.create(detectModel: detect, srModel: sr);
+
+final controller = WxScanController(scanner: scanner);
+await controller.initialize();          // no weights: it uses the lent one
+
+final fromLibrary = await scanner.scanImage(bytes);   // the same scanner
+```
+
+The camera takes its own reference to a lent scanner and gives it back when it
+closes, so the two sides can be disposed in either order — the scanner goes
+when the last of them lets go. The handle they pass is a number the native
+library looks up in a table of its own rather than an address, so even a stale
+one, which is what a hot restart leaves behind, is refused rather than
+followed.
+
+On the web this changes nothing: the scanner there is a worker reached by
+message, and there was no second copy to avoid.
 
 ## The browser
 

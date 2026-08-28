@@ -67,18 +67,20 @@ try {
 ```dart
 import 'package:wxscan_live/wxscan_live.dart';
 
-final info = await WxScan.initialize(
-  resolution: WxResolution.p720,
-  detectModel: detectBytes,
-  srModel: srBytes,
-);
+final controller = WxScanController(resolution: WxResolution.p720);
+await controller.initialize(detectModel: detectBytes, srModel: srBytes);
 
-WxScan.scanStream.listen((outcome) {
+controller.scans.listen((outcome) {
   for (final r in outcome.results) print(r.text);
 });
 
-// The preview is `WxScanPreview(info: info)` — a texture natively, a platform
-// view in a browser — turned and fitted by whatever holds it.
+// The preview is `WxScanPreview(controller: controller)` — a texture natively,
+// a platform view in a browser — turned and fitted by whatever holds it. The
+// controller is a `ValueNotifier`, so it redraws on rotation by itself.
+
+// Scanning a picture too? Lend the camera the scanner you already have, and
+// the CNN weights are held once rather than twice:
+// WxScanController(scanner: scanner)
 ```
 
 → [permissions and a full first screen](packages/wxscan_live/README.md#quick-start) ·

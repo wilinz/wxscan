@@ -22,12 +22,12 @@ class ScanPage extends StatefulWidget {
 }
 
 class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
-  WxScanCameraInfo? _camera;
+  /// The camera. Null until it is opened, and everything about its state —
+  /// the preview size, the torch, the zoom — lives in `_controller.value`
+  /// rather than being mirrored here.
+  WxScanController? _controller;
   StreamSubscription<ScanOutcome>? _sub;
-  StreamSubscription<WxPreviewSize>? _sizeSub;
-  WxPreviewSize? _previewSize;
   String? _error;
-  bool _torch = false;
   bool _hasTorch = false;
   bool _nnEnabled = false;
 
@@ -41,10 +41,17 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   /// The result page is up, so further frames are ignored.
   bool _navigating = false;
 
-  /// The current zoom ratio and the device's maximum, for zooming in
-  /// automatically.
-  double _zoom = 1;
+  /// The device's maximum zoom, for zooming in automatically.
   double _maxZoom = 1;
+
+  /// The zoom the device last confirmed, which the controller keeps.
+  double get _zoom => _controller?.value.zoom ?? 1;
+
+  /// Redraws when the controller's value changes: a rotation, a torch the
+  /// device confirmed, a zoom it clamped.
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
+  }
 
   /// How many frames in a row saw a code without decoding it. Zooming waits
   /// for enough of them, so the picture does not jitter.
@@ -127,37 +134,52 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
           defaultTargetPlatform == TargetPlatform.iOS) {
         final status = await Permission.camera.request();
         if (!status.isGranted) {
-          setState(() => _error = 'Camera permission is needed to scan');
+          // The prompt can be answered after the page is gone.
+          if (mounted) {
+            setState(() => _error = 'Camera permission is needed to scan');
+          }
           return;
         }
       }
 
-      // The plugin loads the models into its own scanner: camera frames stay
-      // in the native layer, so they never reach the one Scanner holds.
-      final info = await WxScan.initialize(
+      // One scanner for the whole application: the camera decodes with the
+      // same one that reads pictures from the library, so there is a single
+      // copy of the weights and a single set of thresholds. Scanner.instance
+      // is null only if init() failed, and then the controller builds its own
+      // from the model bytes.
+      final controller = WxScanController(
+        scanner: Scanner.instance,
         resolution: _resolution,
+      );
+      await controller.initialize(
         detectModel: Scanner.detectModel,
         srModel: Scanner.srModel,
       );
-      _previewSize = WxPreviewSize(
-          info.previewWidth, info.previewHeight, info.displayRotation);
-      // A screen rotation changes the angle to make up, and can change the
-      // size too.
-      _sizeSub = WxScan.previewSizeStream.listen((s) {
-        if (mounted) setState(() => _previewSize = s);
-      });
-      _sub = WxScan.scanStream.listen(_onFrame);
       if (kDebugMode) {
         unawaited(Scanner.selfTestCameraPath());
       }
-      final hasTorch = await WxScan.hasTorch();
-      final zoom = await WxScan.zoomRange();
+      final hasTorch = await controller.hasTorch();
+      final zoom = await controller.zoomRange();
       _maxZoom = zoom.max;
-      if (!mounted) return;
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+      // Wired up only once the page is certain to keep this controller.
+      // Subscribing before the check above left the frame subscription alive
+      // on a page that had already been popped: `dispose` had run, with
+      // nothing in `_sub` to cancel.
+      //
+      // The preview size lives in the controller and follows rotations by
+      // itself; the listener only asks the screen to redraw when it changes.
+      controller.addListener(_onControllerChanged);
+      _sub = controller.scans.listen(_onFrame);
       setState(() {
-        _camera = info;
+        _controller = controller;
         _hasTorch = hasTorch;
-        _error = info.nativeReady ? null : 'The native scanner failed to load';
+        _error = controller.value.nativeReady
+            ? null
+            : 'The native scanner failed to load';
       });
     } on PlatformException catch (e) {
       if (!mounted) return;
@@ -218,8 +240,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   /// is the very frame that was scanned.
   Future<void> _enterPick(ScanOutcome frame) async {
     setState(() => _pickFrame = frame);
-    await WxScan.setScanning(false);
-    final jpeg = await WxScan.grabFrame();
+    await _controller!.setScanning(false);
+    final jpeg = await _controller!.grabFrame();
     if (!mounted || _pickFrame == null) return;
     setState(() => _frozenFrame = jpeg);
   }
@@ -235,12 +257,12 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       _lastFrame = null;
     });
     _pickExitAt = DateTime.now();
-    WxScan.setScanning(true);
+    _controller!.setScanning(true);
   }
 
   void _openResults(List<ScanResult> results) {
     _navigating = true;
-    WxScan.setScanning(false);
+    _controller!.setScanning(false);
     HapticFeedback.mediumImpact();
     Navigator.of(context)
         .push(MaterialPageRoute(
@@ -257,7 +279,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
             });
           }
           _resetZoom();
-          WxScan.setScanning(true);
+          _controller!.setScanning(true);
         });
   }
 
@@ -363,10 +385,11 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         math.exp(logFrom + (math.log(_zoomTarget) - logFrom) * k * _zoomRate);
 
     _zoomBusy = true;
-    WxScan.setZoom(next).then((actual) {
+    _controller!.setZoom(next).then((actual) {
       _zoomBusy = false;
       if (!mounted) return;
-      setState(() => _zoom = actual);
+      // The controller already holds it; this only redraws.
+      setState(() {});
       // The device would go no further. Asking again every step would be a
       // platform call thirty times a second for nothing.
       if ((actual - from).abs() < 0.0005 && _zoomRate >= 1) {
@@ -419,13 +442,13 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       return;
     }
 
-    final turns = _previewSize?.quarterTurns ?? 0;
+    final turns = _controller?.value.previewSize?.quarterTurns ?? 0;
     final (x, y) = _previewFraction(box.cx, box.cy, turns);
     if (x < 0 || x > 1 || y < 0 || y > 1) return;
 
     _lastAutoFocusAt = now;
     _lastAutoFocusPoint = point;
-    unawaited(WxScan.focusAt(x, y));
+    unawaited(_controller!.focusAt(x, y));
   }
 
   void _resetZoom() {
@@ -508,8 +531,9 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     // pull against the fingers.
     _stopZoomDriver();
     _zoomTarget = want;
-    WxScan.setZoom(want).then((actual) {
-      if (mounted) setState(() => _zoom = actual);
+    _controller!.setZoom(want).then((actual) {
+      // The controller already holds it; this only redraws.
+      if (mounted) setState(() {});
     });
   }
 
@@ -526,8 +550,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   /// clamped, so the reticle never appears somewhere the camera is not
   /// looking.
   void _onFocusTap(Offset tap, Size box) {
-    final size = _previewSize;
-    if (size == null || !WxScan.isInitialized) return;
+    final size = _controller?.value.previewSize;
+    if (size == null || _controller == null) return;
 
     final m = _coverFit(box, size.rotatedWidth, size.rotatedHeight);
     final rx = (tap.dx - m.dx) / (size.rotatedWidth * m.scale);
@@ -542,7 +566,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     _focusTimer = Timer(const Duration(milliseconds: 900), () {
       if (mounted) setState(() => _focusPoint = null);
     });
-    unawaited(WxScan.focusAt(x, y));
+    unawaited(_controller!.focusAt(x, y));
   }
 
   /// The layer that takes those taps, under the bars so their buttons are
@@ -620,7 +644,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       _lastFrame = null;
     });
     try {
-      await WxScan.setResolution(next);
+      await _controller!.setResolution(next);
     } on PlatformException catch (e) {
       if (mounted) setState(() => _error = '${e.code}: ${e.message}');
     }
@@ -654,7 +678,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       return;
     }
     _navigating = true;
-    await WxScan.setScanning(false);
+    await _controller!.setScanning(false);
     if (!mounted) return;
     // Several codes in one picture, as on the home screen: the picture is
     // shown with a marker on each, and the reader says which.
@@ -669,7 +693,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       );
       if (chosen == null) {
         _navigating = false;
-        await WxScan.setScanning(true);
+        await _controller!.setScanning(true);
         return;
       }
       results = [chosen];
@@ -681,16 +705,18 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       ),
     );
     _navigating = false;
-    await WxScan.setScanning(true);
+    await _controller!.setScanning(true);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Scanning stops in the background and resumes on return.
+    // Scanning stops in the background and resumes on return. The observer is
+    // registered in initState, so this can arrive before the camera is up —
+    // or never see one at all, if permission was refused.
     if (state == AppLifecycleState.resumed) {
-      WxScan.setScanning(!_navigating);
+      _controller?.setScanning(!_navigating);
     } else {
-      WxScan.setScanning(false);
+      _controller?.setScanning(false);
     }
   }
 
@@ -698,10 +724,11 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _sub?.cancel();
-    _sizeSub?.cancel();
+    _controller?.removeListener(_onControllerChanged);
+    _controller?.dispose();
+    _controller = null;
     _focusTimer?.cancel();
     _zoomDriver?.cancel();
-    WxScan.dispose();
     super.dispose();
   }
 
@@ -729,20 +756,20 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
           child: Stack(
           fit: StackFit.expand,
           children: [
-            if (_camera != null) _buildPreview(_camera!),
+            if (_controller != null) _buildPreview(_controller!),
             // Decoration, and nothing that can be pressed. Without this a
             // CustomPaint takes every tap that reaches it: RenderCustomPaint
             // answers hitTestSelf with true unless its painter says otherwise,
             // so the viewfinder alone would swallow the taps meant for the
             // layer below it.
             const IgnorePointer(child: _ScanLineOverlay()),
-            if (_lastFrame != null && _camera != null && _pickFrame == null)
+            if (_lastFrame != null && _controller != null && _pickFrame == null)
               IgnorePointer(
                 child: CustomPaint(
                   painter: _CodeMarkerPainter(frame: _lastFrame!),
                 ),
               ),
-            if (_camera != null) _buildFocusLayer(),
+            if (_controller != null) _buildFocusLayer(),
             if (_focusPoint != null) _FocusReticle(at: _focusPoint!),
             // Below the top and bottom bars, or its opaque hit-testing would
             // swallow taps meant for those buttons.
@@ -758,14 +785,13 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildPreview(WxScanCameraInfo info) {
+  Widget _buildPreview(WxScanController controller) {
     // The preview is always upright with respect to the device's natural
     // orientation, so however far the screen turned is made up here, and the
     // box outside is sized to the dimensions after that. The two have to
     // agree, or BoxFit.cover stretches by the wrong ratio.
-    final size = _previewSize ??
-        WxPreviewSize(
-            info.previewWidth, info.previewHeight, info.displayRotation);
+    final size = controller.value.previewSize;
+    if (size == null) return const SizedBox.shrink();
     return ClipRect(
       child: FittedBox(
         fit: BoxFit.cover,
@@ -777,7 +803,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
             child: SizedBox(
               width: size.width.toDouble(),
               height: size.height.toDouble(),
-              child: WxScanPreview(info: info),
+              child: WxScanPreview(controller: controller),
             ),
           ),
         ),
@@ -891,7 +917,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                       // dense code will not come out.
                       _chip(
                         _resolution.label,
-                        onTap: _camera == null ? null : _cycleResolution,
+                        onTap: _controller == null ? null : _cycleResolution,
                         icon: Icons.hd_outlined,
                       ),
                       _chip(_nnEnabled
@@ -988,11 +1014,13 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                   if (_hasTorch)
                     IconButton.filledTonal(
                       onPressed: () async {
-                        await WxScan.setTorch(!_torch);
-                        setState(() => _torch = !_torch);
+                        await _controller!.setTorch(!_controller!.value.torchEnabled);
+                        setState(() {});
                       },
                       icon: Icon(
-                        _torch ? Icons.flashlight_on : Icons.flashlight_off,
+                        _controller!.value.torchEnabled
+                            ? Icons.flashlight_on
+                            : Icons.flashlight_off,
                       ),
                     ),
                   const SizedBox(width: 24),
@@ -1380,7 +1408,7 @@ const Duration _kPickExitZoomHold = Duration(seconds: 3);
 const Duration _kMultiCodeGrace = Duration(milliseconds: 700);
 
 /// A point of the scanned frame, as fractions of its width and height, in the
-/// coordinates [WxScan.focusAt] takes.
+/// coordinates `focusAt` takes.
 ///
 /// The frame arrives upright with respect to the screen. The texture holds the
 /// picture upright with respect to the device, which is [quarterTurns]

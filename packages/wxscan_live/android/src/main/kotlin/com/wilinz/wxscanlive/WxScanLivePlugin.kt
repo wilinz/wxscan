@@ -227,6 +227,13 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         eventChannel.setStreamHandler(null)
         sizeChannel.setStreamHandler(null)
         teardown()
+        // After teardown, never before: it posts the scanner's release onto
+        // `worker`, and shutdown() lets what is already queued run. These are
+        // two non-daemon threads per plugin instance, so a host that attaches
+        // and detaches engines — add-to-app, or a FlutterEngineGroup — would
+        // otherwise accumulate a pair per cycle for the life of the process.
+        worker.shutdown()
+        camExec.shutdown()
     }
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) { activity = binding.activity }
@@ -243,11 +250,17 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         when (call.method) {
             "initialize" -> {
                 call.argument<Int>("shortSide")?.let { shortSide = it }
-                ensureScanner(
+                handleInitialize(
+                    result,
                     call.argument<ByteArray>("detectModel"),
                     call.argument<ByteArray>("srModel"),
+                    // A scanner Dart already holds, to be borrowed rather than
+                    // built. Absent means build one here.
+                    // Widths are the native side's business: a value too
+                    // large for a handle there names no scanner, and is
+                    // refused rather than truncated into one that exists.
+                    call.argument<Number>("scannerHandle")?.toLong() ?: 0L,
                 )
-                handleInitialize(result)
             }
             // Changing resolution means rebinding the use cases, which is all
             // CameraX offers. The texture is the same one, so Dart rebuilds
@@ -362,12 +375,54 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     }
 
     /**
-     * Creates the scanner, idempotently. A model that fails to load is not an
-     * error: it falls back to plain image processing, which still scans, with
-     * a lower detection rate on distant or small codes.
+     * Settles which scanner frames are decoded with.
+     *
+     * Dart may hand over the handle of one it already holds — the same scanner
+     * an application uses for pictures from its photo library. Then there is
+     * one set of CNN weights in memory rather than two, and one set of
+     * thresholds that cannot drift apart. This side takes its own reference to
+     * it either way, so the scanner outlives whichever side lets go first.
+     *
+     * Otherwise one is built here. A model that fails to load is not an error:
+     * it falls back to plain image processing, which still scans, with a lower
+     * detection rate on distant or small codes.
      */
-    private fun ensureScanner(detect: ByteArray?, sr: ByteArray?) {
-        if (scannerHandle != 0L) return
+    private fun ensureScanner(detect: ByteArray?, sr: ByteArray?, borrowed: Long) {
+        // Whatever was held is given back first, unconditionally. By the time
+        // this runs there is no camera running — the callers that only wanted
+        // the state of one have already returned — so a scanner left over
+        // from before belongs to nobody. Keeping it would decode this camera's
+        // frames with weights the caller never asked for, and report the
+        // previous scanner's `modelsLoaded` as if it were this one's.
+        //
+        // Left over from what: a hot restart, which leaves this plugin running
+        // while everything it was lent goes away, or an initialize that
+        // settled a scanner and then failed to bind a camera.
+        //
+        // Releasing before retaining is safe even when it is the same scanner
+        // twice over — but not for the reason the queueing suggests: the
+        // queued release and the retain here run on different threads with no
+        // ordering between them. What makes it safe is that a non-zero
+        // `borrowed` can only come from a WxScanner Dart still holds, since
+        // reading its handle after disposal throws. That reference outlives
+        // both operations, so the count cannot reach zero in either order.
+        releaseScanner()
+
+        if (borrowed != 0L) {
+            // A retain that comes back 0 means the handle names no scanner:
+            // stale, from an isolate that is gone. Falling through and building
+            // one here is better than a camera that decodes nothing.
+            scannerHandle = try { NativeScanner.retain(borrowed) } catch (_: Throwable) { 0L }
+            if (scannerHandle != 0L) {
+                // Built elsewhere, from weights this side never saw, so the
+                // answer is asked for rather than inferred.
+                modelsLoaded = try {
+                    NativeScanner.hasDetector(scannerHandle)
+                } catch (_: Throwable) { false }
+                return
+            }
+        }
+
         val empty = ByteArray(0)
         scannerHandle = try {
             NativeScanner.create(detect ?: empty, sr ?: empty)
@@ -378,7 +433,35 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         }
     }
 
-    private fun handleInitialize(result: MethodChannel.Result) {
+    /** Gives back the reference this side holds, if it holds one. */
+    private fun releaseScanner() {
+        if (scannerHandle == 0L) return
+        val h = scannerHandle
+        scannerHandle = 0L
+        modelsLoaded = false
+        // The frame being scanned still names this handle, so the release goes
+        // to the back of the worker queue. It is only this side's reference in
+        // any case: if Dart still holds the scanner, nothing is freed here.
+        worker.execute { try { NativeScanner.release(h) } catch (_: Throwable) {} }
+    }
+
+    /**
+     * Opens the camera, settling the scanner only once this call is known to
+     * be the one that will configure it.
+     *
+     * The scanner used to be settled first, before the permission check and
+     * before [bindCamera]'s "already bound" check. That meant a call that went
+     * on to fail, or one that only wanted the state of a camera already
+     * running, had already swapped the scanner out from under whoever was
+     * using it — and the running camera then decoded every frame against a
+     * handle of zero, silently, for as long as it stayed open.
+     */
+    private fun handleInitialize(
+        result: MethodChannel.Result,
+        detect: ByteArray?,
+        sr: ByteArray?,
+        borrowed: Long,
+    ) {
         if (ContextCompat.checkSelfPermission(appContext, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -390,7 +473,7 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             )
             return
         }
-        main.post { bindCamera(result) }
+        main.post { bindCamera(result, detect, sr, borrowed) }
     }
 
     private fun infoMap(textureId: Long): Map<String, Any> = mapOf(
@@ -402,10 +485,17 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         "modelsLoaded" to modelsLoaded
     )
 
-    private fun bindCamera(result: MethodChannel.Result) {
+    private fun bindCamera(
+        result: MethodChannel.Result,
+        detect: ByteArray?,
+        sr: ByteArray?,
+        borrowed: Long,
+    ) {
         // Already bound: hand Dart the current state, which is what a hot
         // reload or a re-entered page needs. Binding again would build a
-        // second SurfaceTexture and drop the first without releasing it.
+        // second SurfaceTexture and drop the first without releasing it. It
+        // keeps the scanner it has — the frames in flight are being decoded
+        // with it.
         val bound = textureEntry
         if (bound != null && cameraProvider != null) {
             result.success(infoMap(bound.id()))
@@ -415,6 +505,7 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             result.error("BUSY", "the camera is already starting", null)
             return
         }
+        ensureScanner(detect, sr, borrowed)
         starting = true
         try {
             lifecycleRegistry.currentState = Lifecycle.State.RESUMED
@@ -837,6 +928,20 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
         if (!scanning || !nativeReady || scannerHandle == 0L || busy) return
         busy = true
+        // A frame that got past the guard just as the engine went away would
+        // otherwise hand work to an executor that has been shut down, and the
+        // rejection would surface as an uncaught exception on CameraX's
+        // analyser thread. Unbinding does not wait for a frame already in
+        // flight, so this window is real however the teardown is ordered.
+        try {
+            submitScan(y, w, h, rowStride, rot)
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            busy = false
+        }
+    }
+
+    /** Decodes one frame off the camera thread. See [analyze]. */
+    private fun submitScan(y: ByteArray, w: Int, h: Int, rowStride: Int, rot: Int) {
         worker.execute {
             try {
                 val t0 = android.os.SystemClock.elapsedRealtime()
@@ -886,13 +991,6 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         try { textureEntry?.release() } catch (_: Throwable) {}
         textureEntry = null
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
-        if (scannerHandle != 0L) {
-            val h = scannerHandle
-            scannerHandle = 0L
-            // The frame being scanned still holds this handle, so the release
-            // goes to the back of the worker queue.
-            worker.execute { try { NativeScanner.destroy(h) } catch (_: Throwable) {} }
-        }
-        modelsLoaded = false
+        releaseScanner()
     }
 }

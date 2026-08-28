@@ -71,15 +71,50 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     private var busy = false          // read and written on sessionQueue only
     private var scanning = true
 
-    /// The native scanner. Owned here: this path never goes through Dart, so
-    /// the plugin creates and releases its own instance rather than sharing one
-    /// with the FFI bindings of wxscan.
-    private var scanner: OpaquePointer?
+    /// The scanner frames are decoded with, as the library's handle for it —
+    /// a number it looks up in a table of its own, not an address. Zero is
+    /// none.
+    ///
+    /// Built here unless Dart lent one it already holds, which is how an
+    /// application scanning both live and from its photo library keeps a
+    /// single set of weights in memory. Either way this side holds a reference
+    /// of its own, so the scanner outlives whichever side lets go first.
+    ///
+    /// Written on the main thread and read on the scan queue, with no queue
+    /// hop between the two, so the access is locked. Android's equivalent is
+    /// `@Volatile` for the same reason. Without it a scan can read a handle
+    /// released a moment earlier — which the handle table turns into a dropped
+    /// frame rather than a use-after-free, but it is still a data race and
+    /// still reported as one under the thread sanitiser.
+    private let scannerLock = NSLock()
+    private var _scanner: Int = 0
+    private var scanner: Int {
+        get {
+            scannerLock.lock()
+            defer { scannerLock.unlock() }
+            return _scanner
+        }
+        set {
+            scannerLock.lock()
+            defer { scannerLock.unlock() }
+            _scanner = newValue
+        }
+    }
 
     /// Whether the CNN models loaded. Without them decoding still works, but
     /// small or distant symbols are detected far less reliably.
     private var modelsLoaded = false
     private var started = false
+
+    /// A start is under way but not finished.
+    ///
+    /// `started` does not become true until the session is configured and
+    /// running, which leaves a window several hundred milliseconds wide in
+    /// which a second initialize would pass the `started` check and configure
+    /// a second session and register a second texture over the first. iOS has
+    /// always had this; macOS reaches the same code by a different route,
+    /// through the system permission prompt, and needs it just as much.
+    private var starting = false
 
     private var frameW = 0
     private var frameH = 0
@@ -108,6 +143,18 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     private var statMaxMs = 0.0
 
     // MARK: - Registration
+
+    /// The engine is going away.
+    ///
+    /// Flutter calls this when the engine this plugin was registered with is
+    /// destroyed — an add-to-app host tearing down a `FlutterEngine`, or one
+    /// from a `FlutterEngineGroup`. Dart gets no chance to say `dispose`
+    /// first, so without this the camera stays open and the reference this
+    /// side holds on the scanner is never given back: the weights would sit in
+    /// memory for the life of the process, once per engine.
+    public func detachFromEngine(for registrar: FlutterPluginRegistrar) {
+        teardown()
+    }
 
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = WxScanLivePlugin()
@@ -144,11 +191,14 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             if let want = args?["shortSide"] as? Int {
                 shortSide = want
             }
-            ensureScanner(
+            handleInitialize(
                 detect: (args?["detectModel"] as? FlutterStandardTypedData)?.data,
-                sr: (args?["srModel"] as? FlutterStandardTypedData)?.data
+                sr: (args?["srModel"] as? FlutterStandardTypedData)?.data,
+                // A scanner Dart already holds, to be borrowed rather than
+                // built. Absent means build one here.
+                borrowed: (args?["scannerHandle"] as? NSNumber)?.intValue ?? 0,
+                result: result
             )
-            handleInitialize(result: result)
         case "setResolution":
             let want = (call.arguments as? [String: Any])?["shortSide"] as? Int ?? 720
             sessionQueue.async {
@@ -187,7 +237,17 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
 
     // MARK: - Initialisation
 
-    private func handleInitialize(result: @escaping FlutterResult) {
+    private func handleInitialize(
+        detect: Data?,
+        sr: Data?,
+        borrowed: Int,
+        result: @escaping FlutterResult
+    ) {
+        // The scanner is settled last, once this call is known to be the one
+        // that configures the camera. Doing it first meant a call that went on
+        // to fail — no permission, or a camera already running — had already
+        // swapped the scanner out from under whoever was using it.
+        //
         // There is no permission_handler on the desktop, so permission is
         // asked for here: never asked means the system prompt, asked and
         // refused means an error straight back, and Dart points the user at
@@ -199,7 +259,8 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 DispatchQueue.main.async {
                     if granted {
-                        self.handleInitialize(result: result)
+                        self.handleInitialize(
+                            detect: detect, sr: sr, borrowed: borrowed, result: result)
                     } else {
                         result(FlutterError(
                 code: "NO_PERMISSION",
@@ -218,10 +279,22 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             ))
             return
         }
+        // Already running: it keeps the scanner it has — the frames in flight
+        // are being decoded with it.
         if started {
             result(infoMap())
             return
         }
+        if starting {
+            result(FlutterError(
+                code: "BUSY",
+                message: "the camera is already starting",
+                details: nil
+            ))
+            return
+        }
+        ensureScanner(detect: detect, sr: sr, borrowed: borrowed)
+        starting = true
 
         sessionQueue.async {
             do {
@@ -233,6 +306,7 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                 self.disableMirroring()
             } catch {
                 DispatchQueue.main.async {
+                    self.starting = false
                     result(FlutterError(code: "INIT_ERROR", message: error.localizedDescription, details: nil))
                 }
                 return
@@ -247,6 +321,7 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                     self.session.startRunning()
                     self.disableMirroring()
                     self.started = true
+                    DispatchQueue.main.async { self.starting = false }
                 }
 
                 self.sizeStream.push(width: self.frameW, height: self.frameH)
@@ -638,24 +713,68 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
 
     // MARK: - Teardown
 
-    /// Creates the scanner once. A model that fails to load is not an error:
-    /// the scanner falls back to the mode without models, which still decodes.
-    private func ensureScanner(detect: Data?, sr: Data?) {
-        guard scanner == nil else { return }
+    /// Settles which scanner frames are decoded with.
+    ///
+    /// Dart may lend the handle of one it already holds — the same scanner an
+    /// application uses for pictures from its photo library. Then there is one
+    /// set of CNN weights in memory rather than two, and one set of thresholds
+    /// that cannot drift apart. This side takes its own reference either way.
+    ///
+    /// Otherwise one is built here. A model that fails to load is not an
+    /// error: the scanner falls back to the mode without models, which still
+    /// decodes.
+    private func ensureScanner(detect: Data?, sr: Data?, borrowed: Int) {
+        // Whatever was held is given back first, unconditionally. By the time
+        // this runs there is no camera running — the callers that only wanted
+        // the state of one have already returned — so a scanner left over
+        // from before belongs to nobody. Keeping it would decode this camera's
+        // frames with weights the caller never asked for, and report the
+        // previous scanner's `modelsLoaded` as if it were this one's.
+        //
+        // Left over from what: a hot restart, which leaves this plugin running
+        // while everything it was lent goes away, or an initialize that
+        // settled a scanner and then failed to configure a session.
+        //
+        // Releasing before retaining is safe even when it is the same scanner
+        // twice over — but not for the reason the queueing suggests: the
+        // queued release and the retain here run on different threads with no
+        // ordering between them. What makes it safe is that a non-zero
+        // `borrowed` can only come from a WxScanner Dart still holds, since
+        // reading its handle after disposal throws. That reference outlives
+        // both operations, so the count cannot reach zero in either order.
+        releaseScanner()
+
+        if borrowed != 0 {
+            // A retain that comes back 0 means the handle names no scanner:
+            // stale, from an isolate that is gone. Falling through and building
+            // one here is better than a camera that decodes nothing.
+            scanner = WxScanBridge.retain(borrowed)
+            if scanner != 0 {
+                // Built elsewhere, from weights this side never saw, so the
+                // answer is asked for rather than inferred.
+                modelsLoaded = WxScanBridge.hasDetector(scanner)
+                return
+            }
+        }
+
         scanner = WxScanBridge.create(detect: detect, sr: sr)
-        modelsLoaded = scanner != nil && detect != nil
-        if scanner == nil {
+        modelsLoaded = scanner != 0 && detect != nil
+        if scanner == 0 {
             scanner = WxScanBridge.create(detect: nil, sr: nil)
         }
     }
 
+    /// Gives back the reference this side holds, if it holds one.
     private func releaseScanner() {
-        // A frame may still be in flight on the scan queue holding this
-        // pointer, so the release goes to the back of that queue.
+        guard scanner != 0 else { return }
+        // A frame may still be in flight on the scan queue naming this handle,
+        // so the release goes to the back of that queue. It is only this
+        // side's reference in any case: if Dart still holds the scanner,
+        // nothing is freed here.
         let s = scanner
-        scanner = nil
+        scanner = 0
         modelsLoaded = false
-        scanQueue.async { WxScanBridge.destroy(s) }
+        scanQueue.async { WxScanBridge.release(s) }
     }
 
     private func teardown() {
@@ -673,6 +792,7 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             self.session.commitConfiguration()
             self.device = nil
             self.started = false
+            self.starting = false
             self.busy = false
             self.flipPoolRef = nil
             self.lastFrameLock.lock()

@@ -25,10 +25,20 @@ abstract class WxScanPlatform {
 
   static set instance(WxScanPlatform value) => _instance = value;
 
+  /// Opens the camera.
+  ///
+  /// [scannerHandle], when not zero, names a scanner the caller already holds
+  /// and the platform should decode with rather than building its own — one
+  /// set of weights in memory instead of two. It is a handle the native
+  /// library looks up in a table of its own, not an address, so one left over
+  /// from an isolate that is gone is refused rather than followed; the
+  /// platform takes its own reference to it and gives that back when the
+  /// camera closes. Zero means build one from [detectModel] and [srModel].
   Future<Map<String, dynamic>?> initialize({
     required int shortSide,
     Uint8List? detectModel,
     Uint8List? srModel,
+    int scannerHandle = 0,
   });
 
   Stream<String> get scanEvents;
@@ -75,11 +85,16 @@ class MethodChannelWxScan extends WxScanPlatform {
     required int shortSide,
     Uint8List? detectModel,
     Uint8List? srModel,
+    int scannerHandle = 0,
   }) =>
       _method.invokeMapMethod<String, dynamic>('initialize', {
         'shortSide': shortSide,
         'detectModel': detectModel,
         'srModel': srModel,
+        // Omitted rather than sent as zero: the platform reads its absence as
+        // "build your own", and a zero pointer arriving as a number is a
+        // shape worth never producing.
+        if (scannerHandle != 0) 'scannerHandle': scannerHandle,
       });
 
   @override

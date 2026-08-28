@@ -11,6 +11,12 @@ First release.
 - In a browser the camera is `getUserMedia` and a `<video>`, where frames do
   cross into Dart because there is no way for them not to. The files `wxscan`
   needs served are placed by `dart run wxscan:fetch_web`.
+- The camera is a `WxScanController`, a `ValueNotifier<WxScanValue>` in the
+  shape of `CameraController`: every setter publishes what the device
+  confirmed, and `WxScanPreview(controller: ...)` follows a rotation on its own.
+- A `WxScanner` from `wxscan` can be lent to the controller, so an application
+  that scans both live and from the photo library holds one scanner and one
+  copy of the weights instead of two.
 - Reports every symbol in a frame, with corner coordinates, so several codes in
   view can be told apart and picked between.
 - Torch, zoom and capture resolution, each readable as well as settable;
