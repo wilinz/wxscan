@@ -17,6 +17,10 @@ First release.
 - A `WxScanner` from `wxscan` can be lent to the controller, so an application
   that scans both live and from the photo library holds one scanner and one
   copy of the weights instead of two.
+- `initialize` takes the weights as bytes or as paths — `detectModelPath` and
+  `srModelPath` — and the path form is read by the library itself, so a
+  megabyte does not cross the method channel. Flutter assets have no path and
+  still go as bytes; a browser has no filesystem and refuses a path outright.
 - Fixed a preview that froze on its first frame in a browser, on every visit
   to the scanner after the first. A `<video>` put into a host a platform view
   had already taken out of the page is paused by the browser and stays paused
