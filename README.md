@@ -34,6 +34,19 @@ dependencies:
 A git dependency follows the default branch. Pin a `ref` to a tag or a commit
 for anything you would rather have hold still.
 
+**What you need**
+
+| | Version |
+|---|---|
+| Dart | 3.10 or newer |
+| Flutter | 3.38.1 or newer — on Android, 3.44, [for a rotation bug](packages/wxscan_live/README.md#platforms) |
+| Rust | rustup on `PATH`; the compiler itself is pinned and installed on the first build |
+
+Nothing else. The build hook compiles the Rust and fetches the TFLite library,
+reading `rust-toolchain.toml` for the version (1.95.0) and the targets, so
+rustup installs both the first time it runs. No Xcode project, no Gradle, no
+CMake, and no Android NDK beyond what Flutter already installs.
+
 Then follow the quick start in [wxscan](packages/wxscan/README.md#quick-start)
 or [wxscan_live](packages/wxscan_live/README.md#quick-start) — install, weights,
 permissions and a first scan on one screen. The rest of this file is about the

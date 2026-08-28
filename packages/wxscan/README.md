@@ -37,6 +37,19 @@ dependencies:
 
 The git form follows the default branch; add a `ref` to pin a tag or a commit.
 
+### What you need
+
+| | Version |
+|---|---|
+| Dart | 3.10 or newer |
+| Flutter | 3.38.1 or newer, if you use it from Flutter — this package also runs under plain `dart run` and `dart test` |
+| Rust | rustup on `PATH`; the compiler itself is pinned and installed on the first build |
+
+The build hook compiles the Rust and fetches the TFLite library, reading
+`rust-toolchain.toml` for the version (1.95.0) and the targets, so rustup
+installs both the first time it runs. Nothing else: no podspec, no Gradle, no
+CMake.
+
 The CNN weights are not bundled with the package. Download `detect.tflite` and
 `sr.tflite` from
 [wxscan-weights](https://github.com/wilinz/wxscan-weights), put them in

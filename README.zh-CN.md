@@ -33,6 +33,18 @@ dependencies:
 
 git 依赖跟着默认分支走。想固定下来就加 `ref`，指向某个 tag 或 commit。
 
+**需要什么**
+
+| | 版本 |
+|---|---|
+| Dart | 3.10 或更新 |
+| Flutter | 3.38.1 或更新——Android 上用 3.44，[有个转屏 bug](packages/wxscan_live/README.zh-CN.md#平台) |
+| Rust | `PATH` 上有 rustup 即可；编译器版本是钉死的，第一次构建时自动装 |
+
+就这些。构建钩子会编 Rust、下 TFLite 库，版本（1.95.0）和目标平台都从
+`rust-toolchain.toml` 读，rustup 第一次跑的时候把两样一起装上。不需要 Xcode 工程、
+不需要 Gradle、不需要 CMake，Android NDK 也只用 Flutter 本来就装的那份。
+
 接下来照 [wxscan](packages/wxscan/README.zh-CN.md#快速开始) 或
 [wxscan_live](packages/wxscan_live/README.zh-CN.md#快速开始) 的快速开始走一遍：安装、
 权重、权限、第一次扫描，一屏就够。本文剩下的部分讲这个仓库。

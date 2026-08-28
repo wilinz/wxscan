@@ -41,6 +41,19 @@ dependencies:
 
 The git form follows the default branch; add a `ref` to pin a tag or a commit.
 
+### What you need
+
+| | Version |
+|---|---|
+| Dart | 3.10 or newer |
+| Flutter | 3.38.1 or newer — on Android, 3.44, [for a rotation bug](#platforms) |
+| Rust | rustup on `PATH`; the compiler itself is pinned and installed on the first build |
+
+The native library comes from `wxscan`, whose build hook compiles the Rust and
+fetches the TFLite library; it reads `rust-toolchain.toml` for the version
+(1.95.0) and the targets, so rustup installs both the first time it runs.
+Nothing else: no podspec, no Gradle, no CMake.
+
 **1. The weights.** They are not bundled. Download `detect.tflite` and
 `sr.tflite` from
 [wxscan-weights](https://github.com/wilinz/wxscan-weights), put them in
@@ -351,11 +364,8 @@ differs:
 | macOS | AVFoundation, 10.15+ |
 | Web | `getUserMedia`; see [The browser](#the-browser) |
 
-Flutter 3.38.1 or newer, which is where the build hook that produces the native
-library first works.
-
-**On Android, use 3.44 or newer.** Engines up to 3.41 gate viewport metrics
-behind a flag that stops them reaching Dart on a resize. A rotation is a resize,
+**On Android, use Flutter 3.44 or newer.** Engines up to 3.41 gate viewport
+metrics behind a flag that stops them reaching Dart on a resize. A rotation is a resize,
 so Dart stays on the previous orientation for good, and the part of the window
 the old layout no longer fills shows through as blank — a white screen after
 turning the phone. Nothing this package does can reach that: the metrics are

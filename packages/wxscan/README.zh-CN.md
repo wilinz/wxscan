@@ -34,6 +34,18 @@ dependencies:
 
 git 那种跟着默认分支走，加 `ref` 可以固定到某个 tag 或 commit。
 
+### 需要什么
+
+| | 版本 |
+|---|---|
+| Dart | 3.10 或更新 |
+| Flutter | 从 Flutter 用的话 3.38.1 或更新——这个包在纯 `dart run`、`dart test` 下也能跑 |
+| Rust | `PATH` 上有 rustup 即可；编译器版本是钉死的，第一次构建时自动装 |
+
+构建钩子会编 Rust、下 TFLite 库，版本（1.95.0）和目标平台都从 `rust-toolchain.toml`
+读，rustup 第一次跑的时候把两样一起装上。别的都不需要：没有 podspec，没有 Gradle，
+没有 CMake。
+
 CNN 权重不随包分发。去
 [wxscan-weights](https://github.com/wilinz/wxscan-weights) 下载 `detect.tflite` 和
 `sr.tflite`，放进 `assets/models/`，在 `pubspec.yaml` 里声明这个目录：

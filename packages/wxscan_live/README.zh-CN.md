@@ -38,6 +38,18 @@ dependencies:
 
 git 那种跟着默认分支走，加 `ref` 可以固定到某个 tag 或 commit。
 
+### 需要什么
+
+| | 版本 |
+|---|---|
+| Dart | 3.10 或更新 |
+| Flutter | 3.38.1 或更新——Android 上用 3.44，[有个转屏 bug](#平台) |
+| Rust | `PATH` 上有 rustup 即可；编译器版本是钉死的，第一次构建时自动装 |
+
+原生库来自 `wxscan`，编 Rust、下 TFLite 库的是它的构建钩子；版本（1.95.0）和目标平台
+都从 `rust-toolchain.toml` 读，rustup 第一次跑的时候把两样一起装上。别的都不需要：
+没有 podspec，没有 Gradle，没有 CMake。
+
 **1. 权重。** 不随包分发。去
 [wxscan-weights](https://github.com/wilinz/wxscan-weights) 下载 `detect.tflite` 和
 `sr.tflite`，放进 `assets/models/`，在 `pubspec.yaml` 里声明这个目录：
@@ -292,9 +304,7 @@ worker 里跑，所以解码不卡页面。方法和手机上完全一样，区�
 | macOS | AVFoundation，10.15+ |
 | Web | `getUserMedia`，见[浏览器](#浏览器) |
 
-Flutter 要 3.38.1 或更新，那是产出原生库的那个构建钩子最早能用的版本。
-
-**Android 上请用 3.44 或更新。** 3.41 及更早的引擎里有个门控，resize 时不把 viewport
+**Android 上请用 Flutter 3.44 或更新。** 3.41 及更早的引擎里有个门控，resize 时不把 viewport
 metrics 送给 Dart。转屏就是一次 resize，于是 Dart 永远停在上一个朝向，旧布局不再填满的
 那块窗口就露出来，表现为转完屏后的一片白。这件事这个包够不着：`FlutterView` 内部的值
 一直是对的，只是出不了引擎。修复是
