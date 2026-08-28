@@ -15,7 +15,8 @@
 
 ## 快速开始
 
-还没发到 pub.dev，所以从 git 引入——Flutter 和纯 Dart 都是这么写：
+还没发到 pub.dev。两种写法都列在这里，等到发布那天切换只是改一行——而且两种在
+Flutter 和纯 Dart 下写法都一样：
 
 ```yaml
 dependencies:
@@ -23,9 +24,10 @@ dependencies:
     git:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan
+  # wxscan: ^0.1.0        # 发布后从 pub.dev 引入
 ```
 
-这样会跟随默认分支；加一个 `ref` 可以固定到某个 tag 或 commit。
+git 那种写法跟随默认分支；加一个 `ref` 可以固定到某个 tag 或 commit。
 
 CNN 权重没有随包分发。从
 [wxscan-weights](https://github.com/wilinz/wxscan-weights) 下载 `detect.tflite`

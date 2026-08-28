@@ -17,8 +17,9 @@ platform build files to maintain.
 
 ## Quick start
 
-Not on pub.dev yet, so take it from git — this works from Flutter and from
-plain Dart alike:
+Not on pub.dev yet. Both forms are written out, so that the day it is
+published the switch is one line — and either works from Flutter and from plain
+Dart alike:
 
 ```yaml
 dependencies:
@@ -26,9 +27,10 @@ dependencies:
     git:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan
+  # wxscan: ^0.1.0        # from pub.dev, once published
 ```
 
-That follows the default branch; add a `ref` to pin a tag or a commit.
+The git form follows the default branch; add a `ref` to pin a tag or a commit.
 
 The CNN weights are not bundled with the package. Download `detect.tflite` and
 `sr.tflite` from

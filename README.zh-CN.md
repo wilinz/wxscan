@@ -6,7 +6,8 @@
 算法——CNN 检测加超分辨率，不只是一个解码器——移植到了 Rust。不依赖 OpenCV，
 也没有原生构建文件要维护。
 
-两个包都还没发到 pub.dev，所以从 git 引入：
+两个包都还没发到 pub.dev。下面把两种写法并列列出，等到发布那天，两个方向的切换
+都只是改一行：
 
 ```yaml
 dependencies:
@@ -15,11 +16,14 @@ dependencies:
     git:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan
+  # wxscan: ^0.1.0                    # 发布后从 pub.dev 引入
+
   # 实时相机扫描，建立在它之上。
   wxscan_live:
     git:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan_live
+  # wxscan_live: ^0.1.0               # 发布后从 pub.dev 引入
 ```
 
 git 依赖跟随默认分支。想让某样东西不再变动，用 `ref` 固定到某个 tag 或 commit。

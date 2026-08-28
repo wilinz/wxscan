@@ -19,7 +19,8 @@ web，跑着同一个 Rust 扫描器编译出的 WebAssembly。它打开时是�
 
 ## 快速开始
 
-还没发到 pub.dev，所以从 git 引入。它会把 `wxscan` 一并带上：
+还没发到 pub.dev。两种写法都列在这里，等到发布那天切换只是改一行。不论哪一种，
+它都会把 `wxscan` 一并带上：
 
 ```yaml
 dependencies:
@@ -27,9 +28,10 @@ dependencies:
     git:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan_live
+  # wxscan_live: ^0.1.0        # 发布后从 pub.dev 引入
 ```
 
-这样会跟随默认分支；加一个 `ref` 可以固定到某个 tag 或 commit。
+git 那种写法跟随默认分支；加一个 `ref` 可以固定到某个 tag 或 commit。
 
 **1. 权重。** 它们没有随包分发。从
 [wxscan-weights](https://github.com/wilinz/wxscan-weights) 下载 `detect.tflite`

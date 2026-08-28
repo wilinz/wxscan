@@ -21,7 +21,8 @@ decoding a picture never needs one.
 
 ## Quick start
 
-Not on pub.dev yet, so take it from git. It brings `wxscan` with it:
+Not on pub.dev yet. Both forms are written out, so that the day it is
+published the switch is one line. Either way it brings `wxscan` with it:
 
 ```yaml
 dependencies:
@@ -29,9 +30,10 @@ dependencies:
     git:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan_live
+  # wxscan_live: ^0.1.0        # from pub.dev, once published
 ```
 
-That follows the default branch; add a `ref` to pin a tag or a commit.
+The git form follows the default branch; add a `ref` to pin a tag or a commit.
 
 **1. The weights.** They are not bundled. Download `detect.tflite` and
 `sr.tflite` from

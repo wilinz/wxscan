@@ -6,7 +6,8 @@ QR scanning for Flutter that reads the codes other scanners give up on: the
 `wechat_qrcode` algorithm — CNN detection and super resolution, not just a
 decoder — ported to Rust. No OpenCV, and no native build files to maintain.
 
-Neither package is on pub.dev yet, so take them from git:
+Neither package is on pub.dev yet. Both forms are written out below, so that
+the day they are published the switch is one line either way:
 
 ```yaml
 dependencies:
@@ -15,11 +16,14 @@ dependencies:
     git:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan
+  # wxscan: ^0.1.0                    # from pub.dev, once published
+
   # Live camera scanning, on top of it.
   wxscan_live:
     git:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan_live
+  # wxscan_live: ^0.1.0               # from pub.dev, once published
 ```
 
 A git dependency follows the default branch. Pin a `ref` to a tag or a commit
