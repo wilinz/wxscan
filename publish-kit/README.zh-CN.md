@@ -5,7 +5,7 @@
 wxscan 的发布驱动器。从 [wilinz/froom](https://github.com/wilinz/froom/tree/develop/publish-kit)
 的 publish-kit 移植过来，那套是把一个仓库里的四个包发到 pub.dev。
 
-wxscan 要把**四个仓库里的八个目标发到两个注册表**，所以沿用下来的只是形状——按顺序
+wxscan 要把**四个仓库里的七个目标发到两个注册表**，所以沿用下来的只是形状——按顺序
 发布、每步之间等注册表、已经上去的跳过——其余都重写了。
 
 ## 跟 froom 那套的区别

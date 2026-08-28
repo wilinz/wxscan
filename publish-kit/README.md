@@ -5,7 +5,7 @@
 Release driver for wxscan. Ported from [wilinz/froom](https://github.com/wilinz/froom/tree/develop/publish-kit)'s
 publish-kit, which publishes four packages from one repository to pub.dev.
 
-wxscan publishes **eight targets from four repositories to two registries**, so
+wxscan publishes **seven targets from four repositories to two registries**, so
 what carried over is the shape — ordered publishing, waiting for the registry
 between steps, skipping what is already up — and the rest is new.
 
