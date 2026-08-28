@@ -1,5 +1,7 @@
 # wxscan publish-kit
 
+**English** · [简体中文](README.zh-CN.md)
+
 Release driver for wxscan. Ported from [wilinz/froom](https://github.com/wilinz/froom/tree/develop/publish-kit)'s
 publish-kit, which publishes four packages from one repository to pub.dev.
 

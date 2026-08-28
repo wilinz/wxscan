@@ -1,5 +1,7 @@
 # wxscan
 
+**English** · [简体中文](README.zh-CN.md)
+
 QR scanning for Flutter that reads the codes other scanners give up on: the
 `wechat_qrcode` algorithm — CNN detection and super resolution, not just a
 decoder — ported to Rust. No OpenCV, and no native build files to maintain.

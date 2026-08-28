@@ -1,5 +1,7 @@
 # wxscan
 
+**English** · [简体中文](README.zh-CN.md)
+
 QR decoding for Flutter, backed by a Rust port of the `wechat_qrcode` algorithm:
 CNN-based detection, super resolution, and decoding.
 

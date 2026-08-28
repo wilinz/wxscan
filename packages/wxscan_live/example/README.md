@@ -1,5 +1,7 @@
 # wxscan_example
 
+**English** · [简体中文](README.zh-CN.md)
+
 Demo for the [`wxscan`](../) plugin and
 [`wxscan`](../../wxscan).
 
