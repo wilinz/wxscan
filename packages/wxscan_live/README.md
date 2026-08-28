@@ -28,8 +28,12 @@ decoding a picture never needs one.
 
 ## Quick start
 
-Not on pub.dev yet, so the dependency comes from git. Either form brings
-`wxscan` with it:
+```sh
+flutter pub add wxscan_live
+```
+
+Or from git, which follows the default branch until a `ref` pins it to a tag or
+a commit:
 
 ```yaml
 dependencies:
@@ -39,13 +43,7 @@ dependencies:
       path: packages/wxscan_live
 ```
 
-The day it is published:
-
-```sh
-flutter pub add wxscan_live
-```
-
-The git form follows the default branch; add a `ref` to pin a tag or a commit.
+Either form brings `wxscan` with it.
 
 ### What you need
 

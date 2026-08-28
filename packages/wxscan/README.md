@@ -24,8 +24,12 @@ platform build files to maintain.
 
 ## Quick start
 
-Not on pub.dev yet, so the dependency comes from git. Either form works from
-Flutter and from plain Dart alike:
+```sh
+flutter pub add wxscan     # or `dart pub add wxscan`, outside Flutter
+```
+
+Or from git, which follows the default branch until a `ref` pins it to a tag or
+a commit:
 
 ```yaml
 dependencies:
@@ -35,13 +39,7 @@ dependencies:
       path: packages/wxscan
 ```
 
-The day it is published:
-
-```sh
-flutter pub add wxscan     # or `dart pub add wxscan`, outside Flutter
-```
-
-The git form follows the default branch; add a `ref` to pin a tag or a commit.
+Either form works from Flutter and from plain Dart alike.
 
 ### What you need
 

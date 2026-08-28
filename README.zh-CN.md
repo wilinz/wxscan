@@ -12,7 +12,14 @@ CNN 检测加超分辨率，不只是一个解码器——整个移植到了 Rus
 *一帧里两个码，其中一个还是转过的，从笔记本屏幕上扫下来，然后是点开的那一个。被
 扫的页面是 [`tool/qr_bench.html`](tool/qr_bench.html)。*
 
-两个包都还没发到 pub.dev，所以都从 git 引：
+```sh
+flutter pub add wxscan wxscan_live
+```
+
+`wxscan` 解图片和像素缓冲，不碰相机；`wxscan_live` 是建在它上面的实时相机。也可以只
+装其中一个。
+
+也可以从 git 引，那样跟着默认分支走；想钉死就加 `ref`，指向某个 tag 或 commit：
 
 ```yaml
 dependencies:
@@ -28,17 +35,6 @@ dependencies:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan_live
 ```
-
-发布之后一行就够：
-
-```sh
-flutter pub add wxscan wxscan_live
-```
-
-`wxscan` 解图片和像素缓冲，不碰相机；`wxscan_live` 是建在它上面的实时相机。也可以只
-装其中一个。
-
-git 依赖跟着默认分支走。想固定下来就加 `ref`，指向某个 tag 或 commit。
 
 **需要什么**
 

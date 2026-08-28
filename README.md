@@ -14,7 +14,15 @@ decoder — ported to Rust. No OpenCV, and no native build files to maintain.
 the one that was tapped. The page being scanned is
 [`tool/qr_bench.html`](tool/qr_bench.html).*
 
-Neither package is on pub.dev yet, so both come from git:
+```sh
+flutter pub add wxscan wxscan_live
+```
+
+`wxscan` decodes images and pixel buffers and opens no camera; `wxscan_live` is
+the live camera on top of it. Either can be added on its own.
+
+Or from git, which takes whatever the default branch holds — add a `ref` to hold
+it to a tag or a commit:
 
 ```yaml
 dependencies:
@@ -30,18 +38,6 @@ dependencies:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan_live
 ```
-
-The day they are published, both come from one line:
-
-```sh
-flutter pub add wxscan wxscan_live
-```
-
-`wxscan` decodes images and pixel buffers and opens no camera; `wxscan_live` is
-the live camera on top of it. Either can be added on its own.
-
-A git dependency follows the default branch. Pin a `ref` to a tag or a commit
-for anything you would rather have hold still.
 
 **What you need**
 

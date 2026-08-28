@@ -24,7 +24,11 @@ Flutter 的实时二维码扫描，底层是 `wechat_qrcode` 算法的 Rust 移�
 
 ## 快速开始
 
-还没发到 pub.dev，所以依赖从 git 引。哪种写法都会把 `wxscan` 一起带上：
+```sh
+flutter pub add wxscan_live
+```
+
+也可以从 git 引，那样跟着默认分支走，加 `ref` 能钉到某个 tag 或 commit：
 
 ```yaml
 dependencies:
@@ -34,13 +38,7 @@ dependencies:
       path: packages/wxscan_live
 ```
 
-发布之后：
-
-```sh
-flutter pub add wxscan_live
-```
-
-git 那种跟着默认分支走，加 `ref` 可以固定到某个 tag 或 commit。
+哪种写法都会把 `wxscan` 一起带上。
 
 ### 需要什么
 

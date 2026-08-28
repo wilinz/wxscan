@@ -21,7 +21,11 @@ Flutter 的二维码解码，底层是 `wechat_qrcode` 算法的 Rust 移植：C
 
 ## 快速开始
 
-还没发到 pub.dev，所以依赖从 git 引。Flutter 和纯 Dart 写法一样：
+```sh
+flutter pub add wxscan     # 不用 Flutter 的话是 `dart pub add wxscan`
+```
+
+也可以从 git 引，那样跟着默认分支走，加 `ref` 能钉到某个 tag 或 commit：
 
 ```yaml
 dependencies:
@@ -31,13 +35,7 @@ dependencies:
       path: packages/wxscan
 ```
 
-发布之后：
-
-```sh
-flutter pub add wxscan     # 不用 Flutter 的话是 `dart pub add wxscan`
-```
-
-git 那种跟着默认分支走，加 `ref` 可以固定到某个 tag 或 commit。
+两种写法在 Flutter 和纯 Dart 下都一样用。
 
 ### 需要什么
 
