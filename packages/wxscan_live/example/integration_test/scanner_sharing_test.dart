@@ -154,13 +154,20 @@ void main() {
     expect(WxScanner.liveCount, before, reason: 'the last holder freed it');
   });
 
-  testWidgets('a second initialize does not take the running camera\'s scanner',
+  testWidgets('a takeover swaps the scanner, and gives the old one back',
       (tester) async {
-    // The regression this file was written for. A second controller
-    // initializing while the first camera runs used to make the plugin release
-    // the scanner it was decoding with and adopt the newcomer's — and when the
-    // newcomer was disposed, the running camera was left decoding against a
-    // handle of zero. It kept previewing and never decoded again, silently.
+    // The regression this file was written for, as the ownership rule leaves
+    // it. A second controller initializing while the first camera runs used to
+    // release the scanner the camera was decoding with and adopt the
+    // newcomer's *while the first controller went on believing it owned the
+    // camera* — and when the newcomer was disposed, the first was left
+    // decoding against a handle of zero, previewing and never decoding again,
+    // silently.
+    //
+    // The swap itself is now the intended thing: the camera goes to whoever
+    // asked last, so the scanner does too. What this checks is that the swap
+    // is a whole one — the reference to A's scanner is given back rather than
+    // dropped or freed, and B's is taken exactly once.
     final before = WxScanner.liveCount;
 
     final scannerA = await WxScanner.create(detectModel: detect, srModel: sr);
@@ -170,18 +177,20 @@ void main() {
 
     final scannerB = await WxScanner.create(detectModel: detect, srModel: sr);
     final b = WxScanController(scanner: scannerB);
-    // The device has one camera session, so this finds one already running.
-    // Whatever it answers, it must not have touched A's scanner.
-    try {
-      await b.initialize();
-    } on Object catch (e) {
-      debugPrint('[probe] the second initialize said: $e');
-    }
-    b.dispose();
-    await tester.pump(const Duration(milliseconds: 500));
+    await openCamera(b);
+    // The release of A's scanner is queued behind whatever frame was in
+    // flight, so the count settles a moment after the call returns.
+    await tester.pump(const Duration(seconds: 1));
 
     expect(WxScanner.liveCount, before + 2,
-        reason: 'both scanners are still alive and neither was adopted twice');
+        reason: 'two scanners, both held by Dart; the plugin built neither '
+            'and freed neither');
+    await expectFramesFlowing(b, reason: 'B decodes through its own scanner');
+
+    b.dispose();
+    await tester.pump(const Duration(seconds: 1));
+    expect(WxScanner.liveCount, before + 2,
+        reason: 'closing the camera gives back the plugin\'s reference only');
 
     a.dispose();
     await tester.pump(const Duration(milliseconds: 500));
@@ -190,26 +199,25 @@ void main() {
     expect(WxScanner.liveCount, before);
   });
 
-  testWidgets('a second controller must not close the first one\'s camera',
+  testWidgets('a second controller takes the camera, and the first is told',
       (tester) async {
-    // Known to fail. Found by this file, on a device, and left in as the
-    // record of it: the fake platform the widget tests use cannot see it, and
-    // neither can any amount of reading.
+    // Found by this file, on a device, and the reason the ownership rule
+    // exists. The device has one camera session and the plugin is a singleton
+    // over it. A second controller's `initialize` used to take the "already
+    // running" branch and *succeed*, reporting the first camera's texture and
+    // state as its own — so the second controller believed it owned a camera.
+    // Its `dispose` then tore that camera down, and the first controller was
+    // left with a preview that had stopped and a scan stream that had gone
+    // quiet, with nothing said to it.
     //
-    // The device has one camera session and the plugin is a singleton over it.
-    // A second controller's `initialize` takes the "already running" branch
-    // and *succeeds*, reporting the first camera's texture and state as its
-    // own — so the second controller believes it owns a camera. Its `dispose`
-    // then tears that camera down, and the first controller is left with a
-    // preview that has stopped and a scan stream that has gone quiet, with
-    // nothing said to it. The class documentation claims a second controller
-    // "will fail in the platform rather than quietly splitting frames"; it
-    // does not.
-    //
-    // Fixing it is a decision about who owns the camera, not a patch: either
-    // a second initialize is refused (and a hot restart, which arrives looking
-    // exactly like one, has to be told apart), or the last caller takes over
-    // and the previous one is told it lost the camera.
+    // The rule now is that the camera goes to whoever asked last and the one
+    // that had it is told. Which leaves the mirror image to check, and it is
+    // the one that can only be checked here: the controller that *lost* the
+    // camera must not close it when it is disposed. That is enforced by the
+    // session number the platform mints and Dart sends back with the close,
+    // and no fake platform can see it work.
+    final before = WxScanner.liveCount;
+
     final scannerA = await WxScanner.create(detectModel: detect, srModel: sr);
     final a = WxScanController(scanner: scannerA);
     await openCamera(a);
@@ -217,13 +225,29 @@ void main() {
 
     final b = WxScanController();
     await openCamera(b, detectModel: detect, srModel: sr);
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(a.value.isInitialized, isFalse,
+        reason: 'A does not have a camera any more');
+    expect(a.value.error, isA<WxCameraLost>(),
+        reason: 'and it was told, rather than going quiet');
+    expect(WxScanner.liveCount, before + 2,
+        reason: "A's scanner, still held by Dart, and the one B had the "
+            'plugin build');
+    await expectFramesFlowing(b, reason: 'B has the camera now');
+
+    // The assertion this test exists for.
+    a.dispose();
+    await tester.pump(const Duration(seconds: 1));
+    await expectFramesFlowing(b,
+        reason: 'disposing the controller that lost the camera must not '
+            'close the camera that took it');
+
     b.dispose();
     await tester.pump(const Duration(milliseconds: 500));
-
-    await expectFramesFlowing(a,
-        reason: 'A never gave up the camera, so it should still be decoding');
-
-    a.dispose();
+    expect(WxScanner.liveCount, before + 1,
+        reason: "B's camera gave back the scanner it built");
     await scannerA.dispose();
-  }, skip: true);  // known defect: camera ownership, see the comment above
+    expect(WxScanner.liveCount, before);
+  });
 }

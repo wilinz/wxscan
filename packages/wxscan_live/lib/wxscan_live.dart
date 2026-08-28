@@ -169,6 +169,19 @@ enum WxResolution {
   final String label;
 }
 
+/// The camera was taken over by another [WxScanController].
+///
+/// Reported through [WxScanValue.error] rather than thrown: it happens to a
+/// controller that is not calling anything at the time, so there is nowhere to
+/// throw it. See "One camera" on [WxScanController].
+class WxCameraLost implements Exception {
+  const WxCameraLost();
+
+  @override
+  String toString() =>
+      'wxscan_live: another controller took the camera over';
+}
+
 /// The scanning camera. CameraX on Android, AVFoundation on Apple platforms.
 ///
 /// ```dart
@@ -187,10 +200,25 @@ enum WxResolution {
 ///
 /// ## One camera
 ///
-/// A device has one camera session, so one controller at a time can hold it.
-/// Creating a second while the first is initialized will fail in the platform
-/// rather than quietly splitting frames between them. The scanner is a
-/// different matter: as many as you like, as below.
+/// A device has one camera session, so one controller at a time can hold it,
+/// and the last one to [initialize] is the one that has it. A second
+/// controller does not fail and does not split frames: it takes the camera
+/// over, and the controller that held it is told so — [WxScanValue.error]
+/// becomes a [WxCameraLost], [WxScanValue.isInitialized] goes back to false,
+/// and its [scans] stop. A screen that can be reached twice therefore has to
+/// watch for that error, the same way it would watch for a camera the system
+/// took away.
+///
+/// Taking over rather than refusing is what makes a hot restart work: the
+/// plugin outlives the isolate, so the first `initialize` after a restart
+/// arrives at a plugin that still holds the camera from the run before, and
+/// is indistinguishable from a second controller. Refusing one refuses both.
+///
+/// The controller that lost the camera does not close it when it is disposed
+/// — it no longer owns it, and tearing it down would take the camera away
+/// from the controller that does. That was the defect this replaced.
+///
+/// The scanner is a different matter: as many as you like, as below.
 ///
 /// ## Sharing a scanner
 ///
@@ -231,12 +259,37 @@ class WxScanController extends ValueNotifier<WxScanValue> {
   StreamSubscription<Map<String, dynamic>>? _sizes;
   var _disposed = false;
 
+  /// The camera session this controller opened, as the platform numbered it,
+  /// or 0 while it holds no camera. Sent back with the close so that a
+  /// controller which has since lost the camera cannot close the one that
+  /// took it — see "One camera" above.
+  var _sessionId = 0;
+
+  /// Whether this controller has ever asked for the camera. What it is for is
+  /// the case below where there is no session to name: an `initialize` that
+  /// threw may still have left the platform half open.
+  var _asked = false;
+
+  /// Whoever holds the camera, of all the controllers in this isolate.
+  ///
+  /// Static because the platform binding is: there is one camera and one
+  /// plugin over it, so which controller owns it is a fact about the process
+  /// rather than about any one controller. A hot restart starts this over as
+  /// null, which is correct — the controllers it named are gone.
+  static WxScanController? _owner;
+
   /// One event per frame, with empty results when nothing was found.
   ///
   /// Broadcast, and it survives [setScanning] being turned off and on: what
   /// stops is the decoding, not the stream.
+  /// Frames reach this only while this controller holds the camera. The
+  /// platform's stream is one broadcast for the whole process, so without the
+  /// gate a controller that lost the camera would go on reporting the frames
+  /// of the one that took it, as if nothing had happened.
   Stream<ScanOutcome> get scans {
-    _scans ??= _platform.scanEvents.map(parseFrameJson);
+    _scans ??= _platform.scanEvents
+        .where((_) => identical(_owner, this))
+        .map(parseFrameJson);
     return _scans!;
   }
 
@@ -260,6 +313,7 @@ class WxScanController extends ValueNotifier<WxScanValue> {
     Uint8List? srModel,
   }) async {
     _checkAlive();
+    _asked = true;
     final result = await _platform.initialize(
       shortSide: value.resolution.shortSide,
       // A lent scanner already holds its weights; sending them again would
@@ -274,20 +328,30 @@ class WxScanController extends ValueNotifier<WxScanValue> {
       // ignore: invalid_use_of_internal_member
       scannerHandle: _scanner?.nativeHandle ?? 0,
     );
+    // Before anything is claimed: a call that came back with nothing opened
+    // no camera, so there is no camera to take and nobody to take it from.
+    if (result == null) {
+      throw PlatformException(
+        code: 'INIT_ERROR',
+        message: 'the camera returned no result',
+      );
+    }
+
+    // Taken before the disposal check: the camera is open now whatever this
+    // controller does next, and it is open on *this* call's terms — the
+    // platform has already handed the previous holder's camera over. Telling
+    // that holder late is still telling it; not telling it at all would leave
+    // it believing it had a camera that this line is about to close.
+    _takeCamera((result['sessionId'] as num?)?.toInt() ?? 0);
+
     if (_disposed) {
       // Disposed while the camera was opening. It is open now and nobody
       // wants it. This returns rather than throwing, because a screen popped
       // during startup is ordinary rather than an error — but it means an
       // awaited `initialize` can come back with nothing having been opened,
       // which is what [WxScanValue.isInitialized] is for.
-      await _platform.dispose();
+      await _releaseCamera();
       return;
-    }
-    if (result == null) {
-      throw PlatformException(
-        code: 'INIT_ERROR',
-        message: 'the camera returned no result',
-      );
     }
 
     // The preview size arrives on subscription and again on every rotation,
@@ -403,8 +467,56 @@ class WxScanController extends ValueNotifier<WxScanValue> {
     _sizes?.cancel();
     _sizes = null;
     _scans = null;
-    unawaited(_platform.dispose());
+    // Only if it still holds the camera. A controller that lost it to another
+    // one closes nothing: the camera it would close is not its own any more,
+    // and closing it was exactly the defect that "One camera" describes.
+    unawaited(_releaseCamera());
     super.dispose();
+  }
+
+  /// Records that this controller now holds the camera, and tells whoever
+  /// held it before that it does not.
+  void _takeCamera(int sessionId) {
+    _sessionId = sessionId;
+    final previous = _owner;
+    _owner = this;
+    if (previous != null && !identical(previous, this)) previous._loseCamera();
+  }
+
+  /// The other half of a handover, on the controller that lost.
+  ///
+  /// Nothing is asked of the platform here: the camera has not closed, it
+  /// belongs to someone else now. What changes is only this controller's
+  /// account of itself, so a screen listening to it stops drawing a preview
+  /// that has become another controller's and can say why.
+  void _loseCamera() {
+    _sizes?.cancel();
+    _sizes = null;
+    _sessionId = 0;
+    if (_disposed) return;
+    value = value.copyWith(
+      isInitialized: false,
+      isScanning: false,
+      textureId: -1,
+      error: const WxCameraLost(),
+    );
+  }
+
+  /// Closes the camera, if this controller is the one holding it.
+  Future<void> _releaseCamera() async {
+    if (identical(_owner, this)) {
+      _owner = null;
+      final session = _sessionId;
+      _sessionId = 0;
+      await _platform.dispose(sessionId: session);
+      return;
+    }
+    // No session to name, but the camera may still be half open: an
+    // `initialize` that threw can leave the platform holding something it
+    // never got to hand back a session for. Closing it unconditionally is
+    // only safe while nobody holds the camera — if somebody does, this
+    // controller is one that lost it, and what it would close is theirs.
+    if (_asked && _owner == null) await _platform.dispose();
   }
 
   /// Sends a grayscale image through the same native path a camera frame takes,

@@ -34,6 +34,10 @@ abstract class WxScanPlatform {
   /// from an isolate that is gone is refused rather than followed; the
   /// platform takes its own reference to it and gives that back when the
   /// camera closes. Zero means build one from [detectModel] and [srModel].
+  ///
+  /// Returns what the camera opened as, including a `sessionId` naming this
+  /// session — the platform hands the camera to the last caller, so the id is
+  /// how a caller later tells whether the camera it opened is still its own.
   Future<Map<String, dynamic>?> initialize({
     required int shortSide,
     Uint8List? detectModel,
@@ -61,7 +65,14 @@ abstract class WxScanPlatform {
 
   Future<bool> hasTorch();
 
-  Future<void> dispose();
+  /// Closes the camera.
+  ///
+  /// [sessionId] names the session the caller opened, as `initialize`
+  /// returned it. The platform closes nothing when it does not match the one
+  /// open, which is what keeps a controller that has since lost the camera
+  /// from closing the one that took it. Zero means "whatever is open", for a
+  /// caller that never had a session of its own.
+  Future<void> dispose({int sessionId = 0});
 
   Future<String?> selfTestNative({
     required Uint8List gray,
@@ -140,10 +151,10 @@ class MethodChannelWxScan extends WxScanPlatform {
       (await _method.invokeMethod<bool>('hasTorch')) ?? false;
 
   @override
-  Future<void> dispose() {
+  Future<void> dispose({int sessionId = 0}) {
     _scanEvents = null;
     _previewSizeEvents = null;
-    return _method.invokeMethod('dispose');
+    return _method.invokeMethod('dispose', {'sessionId': sessionId});
   }
 
   @override

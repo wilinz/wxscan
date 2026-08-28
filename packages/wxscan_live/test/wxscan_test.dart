@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wxscan/wxscan.dart';
 import 'package:wxscan_live/wxscan_live.dart';
@@ -17,6 +18,16 @@ class _FakePlatform extends WxScanPlatform {
   double? lastZoom;
   ({double x, double y})? lastFocus;
   var disposed = false;
+
+  /// Which session the last close named, and how many sessions have been
+  /// opened. The plugin hands the camera to whoever asked last, so a close
+  /// carries the session it means.
+  int? lastDisposedSession;
+  var sessions = 0;
+
+  /// Makes initialize fail the way a platform that could not open the camera
+  /// does, to reach the paths that run when it throws.
+  var failInitialize = false;
 
   /// What setZoom pretends the device clamped to.
   double clampZoomTo = 2.0;
@@ -35,8 +46,13 @@ class _FakePlatform extends WxScanPlatform {
     lastShortSide = shortSide;
     lastScannerHandle = scannerHandle;
     lastDetectModel = detectModel;
+    if (failInitialize) {
+      throw PlatformException(code: 'INIT_ERROR', message: 'no camera');
+    }
+    sessions += 1;
     return {
       'textureId': 7,
+      'sessionId': sessions,
       'previewWidth': 1280,
       'previewHeight': 720,
       'displayRotation': 90,
@@ -83,7 +99,10 @@ class _FakePlatform extends WxScanPlatform {
   Future<bool> hasTorch() async => true;
 
   @override
-  Future<void> dispose() async => disposed = true;
+  Future<void> dispose({int sessionId = 0}) async {
+    lastDisposedSession = sessionId;
+    disposed = true;
+  }
 
   @override
   Future<String?> selfTestNative({
@@ -224,6 +243,101 @@ void main() {
 
     expect(fake.disposed, isTrue);
     expect(() => c.setTorch(false), throwsStateError);
+  });
+
+  /// One camera, and the last caller has it. These are the Dart half of the
+  /// rule; the native half — that a stale close closes nothing — is checked on
+  /// a device in `example/integration_test/scanner_sharing_test.dart`, since
+  /// this fake cannot lose a camera it never had.
+  group('one camera, and the last caller has it', () {
+    /// A second controller, disposed for us whichever way the test goes.
+    Future<WxScanController> second() async {
+      final c = WxScanController();
+      addTearDown(c.dispose);
+      await c.initialize();
+      return c;
+    }
+
+    test('a second initialize takes the camera, and the first is told',
+        () async {
+      final a = await opened();
+      final b = await second();
+
+      expect(b.value.isInitialized, isTrue);
+      expect(a.value.isInitialized, isFalse,
+          reason: 'it does not have a camera any more');
+      expect(a.value.error, isA<WxCameraLost>(),
+          reason: 'and it can say why, rather than going quiet');
+      expect(a.value.textureId, -1,
+          reason: 'the texture it would draw belongs to b');
+    });
+
+    test('the controller that lost the camera does not close it', () async {
+      // The defect this replaced: the second controller believed it owned the
+      // camera, and disposing it tore down the first one's.
+      final a = await opened();
+      final b = await second();
+
+      a.dispose();
+      controller = null;
+      expect(fake.disposed, isFalse,
+          reason: "a is not holding the camera, so it closes nothing");
+
+      b.dispose();
+      expect(fake.disposed, isTrue);
+      expect(fake.lastDisposedSession, 2,
+          reason: 'and it names the session it opened, not whatever is open');
+    });
+
+    test('a controller whose initialize threw still closes the camera',
+        () async {
+      // There is no session to name — the throw came before one was handed
+      // back — but the platform may be holding a camera half open, and this
+      // controller is the only one that could have left it that way.
+      fake.failInitialize = true;
+      final c = WxScanController();
+      await expectLater(c.initialize(), throwsA(isA<PlatformException>()));
+      c.dispose();
+
+      expect(fake.disposed, isTrue);
+      expect(fake.lastDisposedSession, 0, reason: 'it has no session to name');
+    });
+
+    test('a controller that never opened a camera closes nothing', () async {
+      final a = await opened();
+      WxScanController().dispose();
+      expect(fake.disposed, isFalse);
+      expect(a.value.isInitialized, isTrue, reason: 'and a is untouched');
+    });
+
+    test('frames stop reaching the controller that lost the camera', () async {
+      // The platform's stream is one broadcast for the whole process, so
+      // without the gate a is left reporting b's frames as its own.
+      final a = await opened();
+      final fromA = <ScanOutcome>[];
+      final fromB = <ScanOutcome>[];
+      a.scans.listen(fromA.add);
+
+      final b = await second();
+      b.scans.listen(fromB.add);
+
+      fake.scanController.add('{"w":640,"h":480,"results":[],"candidates":[]}');
+      await pumpEventQueue();
+
+      expect(fromA, isEmpty);
+      expect(fromB, hasLength(1));
+    });
+
+    test('reopening after losing the camera takes it back', () async {
+      final a = await opened();
+      final b = await second();
+      await a.initialize();
+
+      expect(a.value.isInitialized, isTrue);
+      expect(a.value.error, isNull, reason: 'the loss it reported is over');
+      expect(b.value.error, isA<WxCameraLost>(),
+          reason: 'and b is the one told this time');
+    });
   });
 
   group('sharing a scanner with the application', () {

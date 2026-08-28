@@ -17,6 +17,13 @@ First release.
 - A `WxScanner` from `wxscan` can be lent to the controller, so an application
   that scans both live and from the photo library holds one scanner and one
   copy of the weights instead of two.
+- One camera, and the last controller to `initialize` has it. A second one
+  takes it over rather than failing or splitting frames, and the controller
+  that held it is told: its `value.error` becomes a `WxCameraLost` and its
+  scans stop. Disposing a controller that lost the camera closes nothing, so
+  it cannot take the camera away from the one that has it. Taking over rather
+  than refusing is also what makes a hot restart work, since a restart reaches
+  the plugin looking exactly like a second controller.
 - Reports every symbol in a frame, with corner coordinates, so several codes in
   view can be told apart and picked between.
 - Torch, zoom and capture resolution, each readable as well as settable;

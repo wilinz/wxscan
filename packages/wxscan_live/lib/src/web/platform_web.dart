@@ -53,6 +53,13 @@ class WxScanWeb extends WxScanPlatform {
   static JSObject? _previewHost;
   static var _viewRegistered = false;
 
+  /// Which camera session is open, or 0 when none is, and the last number
+  /// minted. Never reused, so a close that arrives late names a session that
+  /// has ended rather than the next one. See [WxScanPlatform.dispose] for what
+  /// a caller does with it.
+  static var _sessionId = 0;
+  static var _lastSessionId = 0;
+
   @override
   Future<Map<String, dynamic>?> initialize({
     required int shortSide,
@@ -63,6 +70,10 @@ class WxScanWeb extends WxScanPlatform {
     // duplicated either way, so there is nothing to share.
     int scannerHandle = 0,
   }) async {
+    // The browser's own handover: whatever was open is closed, and the caller
+    // asking now gets a session of its own. It is the same rule as the native
+    // bindings — the camera goes to whoever asked last — reached by a shorter
+    // road, since a `<video>` and a worker can simply be rebuilt.
     await dispose();
 
     final WxCamera camera;
@@ -97,9 +108,12 @@ class WxScanWeb extends WxScanPlatform {
 
     _startPump();
 
+    _lastSessionId += 1;
+    _sessionId = _lastSessionId;
     return {
       // A browser shows the preview through a platform view, not a texture.
       'textureId': -1,
+      'sessionId': _sessionId,
       'previewWidth': camera.width,
       'previewHeight': camera.height,
       // The video track follows the device, so the image is already upright.
@@ -261,7 +275,11 @@ class WxScanWeb extends WxScanPlatform {
   }
 
   @override
-  Future<void> dispose() async {
+  Future<void> dispose({int sessionId = 0}) async {
+    // A caller closing a session that has already been taken over closes
+    // nothing, the same as on a device.
+    if (sessionId != 0 && sessionId != _sessionId) return;
+    _sessionId = 0;
     _pump?.cancel();
     _pump = null;
     _driven = false;

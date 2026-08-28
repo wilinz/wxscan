@@ -151,6 +151,23 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
      * does exactly that.
      */
     private var starting = false
+
+    /**
+     * Which camera session is open, or 0 when none is.
+     *
+     * The camera goes to whoever asked for it last, so "close the camera" is
+     * not a thing a caller can be trusted to mean about the camera *it* opened
+     * — by the time it says so, the camera may be someone else's. The number
+     * is minted on every open, handed to Dart, and sent back with the close;
+     * one that does not match is a caller closing a session that has already
+     * ended, and closes nothing.
+     */
+    private var sessionId = 0L
+    private var lastSessionId = 0L
+
+    /** The shortSide the current binding was built with, to notice a takeover
+     *  that asks for a different resolution. */
+    private var boundShortSide = 0
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var previewSurface: Surface? = null
@@ -369,7 +386,17 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     main.post { result.success(json) }
                 }
             }
-            "dispose" -> { teardown(); result.success(null) }
+            // Closing the camera is the one call that can be sent by someone
+            // who no longer owns it: a controller that lost the camera to a
+            // later one and is now being disposed. The session it names says
+            // which, and a stale one closes nothing. Zero — a caller with no
+            // session of its own — still closes, since that is the only way
+            // anything can be closed by a caller that never opened it.
+            "dispose" -> {
+                val session = call.argument<Number>("sessionId")?.toLong() ?: 0L
+                if (session == 0L || session == sessionId) teardown()
+                result.success(null)
+            }
             else -> result.notImplemented()
         }
     }
@@ -388,16 +415,23 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
      * detection rate on distant or small codes.
      */
     private fun ensureScanner(detect: ByteArray?, sr: ByteArray?, borrowed: Long) {
-        // Whatever was held is given back first, unconditionally. By the time
-        // this runs there is no camera running — the callers that only wanted
-        // the state of one have already returned — so a scanner left over
-        // from before belongs to nobody. Keeping it would decode this camera's
-        // frames with weights the caller never asked for, and report the
-        // previous scanner's `modelsLoaded` as if it were this one's.
+        // Whatever was held is given back first, unconditionally. Only the
+        // caller that is about to own the camera reaches this — the ones that
+        // failed, and the one that found a bind in flight, have returned
+        // already — so a scanner left over from before belongs to nobody that
+        // is still reading frames. Keeping it would decode the new owner's
+        // frames with weights it never asked for, and report the previous
+        // scanner's `modelsLoaded` as if it were this one's.
         //
-        // Left over from what: a hot restart, which leaves this plugin running
-        // while everything it was lent goes away, or an initialize that
-        // settled a scanner and then failed to bind a camera.
+        // Left over from what: the caller that just lost the camera to this
+        // one, a hot restart, which leaves this plugin running while
+        // everything it was lent goes away, or an initialize that settled a
+        // scanner and then failed to bind a camera.
+        //
+        // The camera may be running while this swaps the handle out, on a
+        // takeover. The analyser reads the field per frame and skips a zero,
+        // and the release is queued behind whatever frame is in flight on the
+        // worker, so the swap is seen between frames and never under one.
         //
         // Releasing before retaining is safe even when it is the same scanner
         // twice over — but not for the reason the queueing suggests: the
@@ -478,6 +512,7 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
     private fun infoMap(textureId: Long): Map<String, Any> = mapOf(
         "textureId" to textureId,
+        "sessionId" to sessionId,
         "previewWidth" to previewW,
         "previewHeight" to previewH,
         "displayRotation" to displayRotationDegrees,
@@ -491,13 +526,26 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         sr: ByteArray?,
         borrowed: Long,
     ) {
-        // Already bound: hand Dart the current state, which is what a hot
-        // reload or a re-entered page needs. Binding again would build a
-        // second SurfaceTexture and drop the first without releasing it. It
-        // keeps the scanner it has — the frames in flight are being decoded
-        // with it.
+        // Already bound, so this is a takeover: the camera goes to the caller
+        // that asked last, and the one that had it is told by its own Dart
+        // side. Rebinding is not how it is done — that would build a second
+        // SurfaceTexture and drop the first without releasing it — so what
+        // changes hands is the session, the scanner, and the resolution, over
+        // the camera already running.
+        //
+        // A hot restart arrives here looking exactly like a second caller:
+        // this plugin outlived the isolate and still holds the camera, while
+        // everything Dart lent it is gone. Handing over is the answer to both,
+        // which is why there is no attempt to tell them apart.
         val bound = textureEntry
         if (bound != null && cameraProvider != null) {
+            sessionId = ++lastSessionId
+            // The frames in flight are decoded with whatever this settles on;
+            // the caller that had the camera is not reading them any more.
+            ensureScanner(detect, sr, borrowed)
+            if (shortSide != boundShortSide) {
+                try { rebindUseCases() } catch (_: Throwable) {}
+            }
             result.success(infoMap(bound.id()))
             return
         }
@@ -529,6 +577,7 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     val provider = future.get()
                     cameraProvider = provider
                     bindUseCases(st)
+                    sessionId = ++lastSessionId
                     starting = false
                     main.post { result.success(infoMap(entry.id())) }
                 } catch (e: Throwable) {
@@ -553,6 +602,7 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private fun bindUseCases(st: SurfaceTexture) {
         val provider = cameraProvider ?: return
         provider.unbindAll()
+        boundShortSide = shortSide
 
         val selector = CameraSelector.DEFAULT_BACK_CAMERA
 
@@ -991,6 +1041,10 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         try { textureEntry?.release() } catch (_: Throwable) {}
         textureEntry = null
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+        // Never reused: the ids only go up, so a close that arrives late
+        // names a session that has ended rather than the next one.
+        sessionId = 0L
+        boundShortSide = 0
         releaseScanner()
     }
 }

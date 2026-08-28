@@ -116,6 +116,21 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     /// through the system permission prompt, and needs it just as much.
     private var starting = false
 
+    /// Which camera session is open, or 0 when none is.
+    ///
+    /// The camera goes to whoever asked for it last, so "close the camera" is
+    /// not a thing a caller can be trusted to mean about the camera *it*
+    /// opened — by the time it says so, the camera may be someone else's. The
+    /// number is minted on every open, handed to Dart, and sent back with the
+    /// close; one that does not match is a caller closing a session that has
+    /// already ended, and closes nothing.
+    private var sessionId = 0
+    private var lastSessionId = 0
+
+    /// The shortSide the running session was configured with, to notice a
+    /// takeover that asks for a different resolution.
+    private var boundShortSide = 0
+
     private var frameW = 0
     private var frameH = 0
 
@@ -228,7 +243,14 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
         case "selfTestNative":
             handleSelfTest(call, result: result)
         case "dispose":
-            teardown()
+            // Closing the camera is the one call that can be sent by someone
+            // who no longer owns it: a controller that lost the camera to a
+            // later one and is now being disposed. The session it names says
+            // which, and a stale one closes nothing. Zero — a caller with no
+            // session of its own — still closes, since that is the only way
+            // anything can be closed by a caller that never opened it.
+            let session = (call.arguments as? [String: Any])?["sessionId"] as? Int ?? 0
+            if session == 0 || session == sessionId { teardown() }
             result(nil)
         default:
             result(FlutterMethodNotImplemented)
@@ -279,9 +301,30 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             ))
             return
         }
-        // Already running: it keeps the scanner it has — the frames in flight
-        // are being decoded with it.
+        // Already running, so this is a takeover: the camera goes to the
+        // caller that asked last, and the one that had it is told by its own
+        // Dart side. The session itself is not rebuilt — what changes hands
+        // is the session number, the scanner, and the resolution, over the
+        // capture session already running.
+        //
+        // A hot restart arrives here looking exactly like a second caller:
+        // this plugin outlived the isolate and still holds the camera, while
+        // everything Dart lent it is gone. Handing over is the answer to
+        // both, which is why there is no attempt to tell them apart.
         if started {
+            lastSessionId += 1
+            sessionId = lastSessionId
+            // The frames in flight are decoded with whatever this settles on;
+            // the caller that had the camera is not reading them any more.
+            ensureScanner(detect: detect, sr: sr, borrowed: borrowed)
+            let resolutionChanged = shortSide != boundShortSide
+            boundShortSide = shortSide
+            if resolutionChanged {
+                sessionQueue.async {
+                    self.applyResolution()
+                    self.sizeStream.push(width: self.frameW, height: self.frameH)
+                }
+            }
             result(infoMap())
             return
         }
@@ -324,6 +367,13 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                     DispatchQueue.main.async { self.starting = false }
                 }
 
+                // Minted on the main thread, before the map that carries it
+                // goes back: what Dart is handed and what the next call reads
+                // have to be the same number.
+                self.lastSessionId += 1
+                self.sessionId = self.lastSessionId
+                self.boundShortSide = self.shortSide
+
                 self.sizeStream.push(width: self.frameW, height: self.frameH)
                 result(self.infoMap())
             }
@@ -333,6 +383,7 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     private func infoMap() -> [String: Any] {
         [
             "textureId": textureId,
+            "sessionId": sessionId,
             "previewWidth": frameW,
             "previewHeight": frameH,
             "displayRotation": 0,
@@ -724,16 +775,26 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     /// error: the scanner falls back to the mode without models, which still
     /// decodes.
     private func ensureScanner(detect: Data?, sr: Data?, borrowed: Int) {
-        // Whatever was held is given back first, unconditionally. By the time
-        // this runs there is no camera running — the callers that only wanted
-        // the state of one have already returned — so a scanner left over
-        // from before belongs to nobody. Keeping it would decode this camera's
-        // frames with weights the caller never asked for, and report the
-        // previous scanner's `modelsLoaded` as if it were this one's.
+        // Whatever was held is given back first, unconditionally. Only the
+        // caller that is about to own the camera reaches this — the ones that
+        // failed, and the one that found a session being built, have returned
+        // already — so a scanner left over from before belongs to nobody that
+        // is still reading frames. Keeping it would decode the new owner's
+        // frames with weights it never asked for, and report the previous
+        // scanner's `modelsLoaded` as if it were this one's.
         //
-        // Left over from what: a hot restart, which leaves this plugin running
-        // while everything it was lent goes away, or an initialize that
-        // settled a scanner and then failed to configure a session.
+        // Left over from what: the caller that just lost the camera to this
+        // one, a hot restart, which leaves this plugin running while
+        // everything it was lent goes away, or an initialize that settled a
+        // scanner and then failed to configure a session.
+        //
+        // The session may be running while this swaps the handle out, on a
+        // takeover. The scan callback reads the field per frame, and the one
+        // frame that could read the gap between the release and the retain
+        // reads a zero, which names no scanner and is refused by the library
+        // rather than followed. The release itself is queued behind whatever
+        // frame is in flight on the scan queue, so no frame is decoding
+        // against the handle being given back.
         //
         // Releasing before retaining is safe even when it is the same scanner
         // twice over — but not for the reason the queueing suggests: the
@@ -778,6 +839,10 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     }
 
     private func teardown() {
+        // Never reused: the ids only go up, so a close that arrives late names
+        // a session that has ended rather than the next one.
+        sessionId = 0
+        boundShortSide = 0
         releaseScanner()
         let tid = textureId
         textureId = -1
