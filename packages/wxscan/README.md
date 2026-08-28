@@ -17,9 +17,8 @@ platform build files to maintain.
 
 ## Quick start
 
-Not on pub.dev yet. Both forms are written out, so that the day it is
-published the switch is one line — and either works from Flutter and from plain
-Dart alike:
+Not on pub.dev yet, so the dependency comes from git. Either form works from
+Flutter and from plain Dart alike:
 
 ```yaml
 dependencies:
@@ -27,7 +26,13 @@ dependencies:
     git:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan
-  # wxscan: ^0.1.0        # from pub.dev, once published
+```
+
+The day it is published, that becomes:
+
+```yaml
+dependencies:
+  wxscan: ^0.1.0
 ```
 
 The git form follows the default branch; add a `ref` to pin a tag or a commit.

@@ -6,7 +6,7 @@ Flutter 的二维码扫描，能扫出别的扫描器扫不动的码。用的是
 CNN 检测加超分辨率，不只是一个解码器——整个移植到了 Rust。不依赖 OpenCV，也没有原生
 构建文件要维护。
 
-两个包都还没发到 pub.dev。下面把两种写法都列出来，等发布那天，改一行就能切换：
+两个包都还没发到 pub.dev，所以都从 git 引：
 
 ```yaml
 dependencies:
@@ -15,14 +15,20 @@ dependencies:
     git:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan
-  # wxscan: ^0.1.0                    # 发布后从 pub.dev 引入
 
   # 实时相机扫描，建在它上面。
   wxscan_live:
     git:
       url: https://github.com/wilinz/wxscan.git
       path: packages/wxscan_live
-  # wxscan_live: ^0.1.0               # 发布后从 pub.dev 引入
+```
+
+发布之后写成：
+
+```yaml
+dependencies:
+  wxscan: ^0.1.0        # 图片和像素缓冲，不碰相机
+  wxscan_live: ^0.1.0   # 实时相机扫描，建在它上面
 ```
 
 git 依赖跟着默认分支走。想固定下来就加 `ref`，指向某个 tag 或 commit。
