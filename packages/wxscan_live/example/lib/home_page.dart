@@ -116,55 +116,27 @@ class _HomePageState extends State<HomePage> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 32, 20, 24),
+            // The way to the about screen is pinned to the foot of the
+            // screen rather than trailing the content, so it reads as the end
+            // of the page wherever the content happens to stop. What is above
+            // it scrolls; it does not.
+            child: Column(
               children: [
-                // The title and the way out to what this is, on one line:
-                // there is no app bar here, and an about screen nobody can
-                // find is the same as not having one.
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text('wxscan',
-                          style: theme.textTheme.displaySmall),
+                Expanded(child: _entries(theme)),
+                // Named rather than an icon in the corner. An icon on its own
+                // says nothing about where it goes, and this is where a reader
+                // who has just seen what the application does looks for what
+                // it is and where it came from.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                  child: TextButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(builder: (_) => const AboutPage()),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                            builder: (_) => const AboutPage()),
-                      ),
-                      icon: const Icon(Icons.info_outline),
-                      tooltip: 'About',
-                    ),
-                  ],
+                    icon: const Icon(Icons.info_outline, size: 18),
+                    label: const Text('About wxscan and its source'),
+                  ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'QR scanning that reads the codes other scanners give up on: '
-                  'a neural network finds the symbol, a second one sharpens it, '
-                  'and nothing leaves this device.',
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 28),
-                _Entry(
-                  icon: Icons.qr_code_scanner,
-                  title: 'Live scan',
-                  subtitle: 'Point the camera at a code. Several in one frame '
-                      'come back together, and you pick.',
-                  onTap: _openScanner,
-                ),
-                const SizedBox(height: 12),
-                _Entry(
-                  icon: Icons.photo_library_outlined,
-                  title: 'Decode a picture',
-                  subtitle: 'A screenshot or a photo from the library, read '
-                      'without the camera.',
-                  onTap: _decodeAPicture,
-                  busy: _decoding,
-                ),
-                const SizedBox(height: 28),
-                _engineLine(theme),
               ],
             ),
           ),
@@ -172,6 +144,41 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  /// Everything above the foot of the page, and the only part that scrolls.
+  Widget _entries(ThemeData theme) => ListView(
+        padding: const EdgeInsets.fromLTRB(20, 32, 20, 8),
+        children: [
+          Text('wxscan', style: theme.textTheme.displaySmall),
+          const SizedBox(height: 8),
+          Text(
+            'QR scanning that reads the codes other scanners give up on: '
+            'a neural network finds the symbol, a second one sharpens it, '
+            'and nothing leaves this device.',
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 28),
+          _Entry(
+            icon: Icons.qr_code_scanner,
+            title: 'Live scan',
+            subtitle: 'Point the camera at a code. Several in one frame '
+                'come back together, and you pick.',
+            onTap: _openScanner,
+          ),
+          const SizedBox(height: 12),
+          _Entry(
+            icon: Icons.photo_library_outlined,
+            title: 'Decode a picture',
+            subtitle: 'A screenshot or a photo from the library, read '
+                'without the camera.',
+            onTap: _decodeAPicture,
+            busy: _decoding,
+          ),
+          const SizedBox(height: 28),
+          _engineLine(theme),
+        ],
+      );
 
   /// Which engine the weights left us with. Worth saying plainly: it is the
   /// difference between reading a code across a room and needing it held up to
