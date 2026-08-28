@@ -5,6 +5,14 @@ homepage: https://github.com/wilinz/wxscan
 repository: https://github.com/wilinz/wxscan
 issue_tracker: https://github.com/wilinz/wxscan/issues
 
+# As for wxscan, with camera in place of image: this is the live path.
+topics:
+  - qr-code
+  - barcode
+  - scanner
+  - camera
+  - ffi
+
 environment:
   sdk: ">=3.10.0 <4.0.0"
   # Not the plugin template's 3.19. The floor is the build hook that produces

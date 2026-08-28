@@ -60,7 +60,10 @@ class Target {
   /// standalone crates are their own repository, hence the default.
   final String dir;
 
-  /// Names of other targets in this plan that must be published first.
+  /// Ids of other targets in this plan that must be published first.
+  ///
+  /// Ids rather than names, because two targets are called `wxscan` and a bare
+  /// name cannot say which. Checked by [planProblems].
   final List<String> deps;
 
   /// The two `wxscan` entries collide by name; this disambiguates them in
@@ -80,7 +83,7 @@ const List<Target> releasePlan = [
     name: 'wxing',
     registry: Registry.cargo,
     repo: Repo.wxing,
-    deps: ['cvlite'],
+    deps: ['crate:cvlite'],
   ),
   // ---- the algorithm workspace -----------------------------------------
   // The weights are not here and are in no crate at all; they live in the
@@ -97,14 +100,14 @@ const List<Target> releasePlan = [
     registry: Registry.cargo,
     repo: Repo.rust,
     dir: 'crates/wxscan',
-    deps: ['cvlite', 'wxing', 'wxscan-tflite'],
+    deps: ['crate:cvlite', 'crate:wxing', 'crate:wxscan-tflite'],
   ),
   Target(
     name: 'wxscan-ffi',
     registry: Registry.cargo,
     repo: Repo.rust,
     dir: 'crates/wxscan-ffi',
-    deps: ['cvlite', 'wxscan'],
+    deps: ['crate:cvlite', 'crate:wxscan'],
   ),
   // ---- pub.dev ---------------------------------------------------------
   // The pub package `wxscan` and the crate `wxscan` are different things
@@ -122,13 +125,40 @@ const List<Target> releasePlan = [
     registry: Registry.pub,
     repo: Repo.dart,
     dir: 'packages/wxscan',
-    deps: ['wxscan-ffi'],
+    deps: ['crate:wxscan-ffi'],
   ),
   Target(
     name: 'wxscan_live',
     registry: Registry.pub,
     repo: Repo.dart,
     dir: 'packages/wxscan_live',
-    deps: ['wxscan'],
+    deps: ['pub:wxscan'],
   ),
 ];
+
+/// What is wrong with [releasePlan], or empty when nothing is.
+///
+/// The list order is the publishing order and `deps` is the claim that the
+/// order is right — but nothing read `deps`, so the claim was decoration. A
+/// target moved above one it depends on would have been caught by crates.io
+/// rejecting the upload, three crates into a release that cannot be taken
+/// back. Checking it costs a loop, and runs before anything is uploaded.
+List<String> planProblems() {
+  final problems = <String>[];
+  final seen = <String>{};
+  for (final target in releasePlan) {
+    if (!seen.add(target.id)) {
+      problems.add('${target.id} appears twice');
+    }
+    for (final dep in target.deps) {
+      if (!releasePlan.any((t) => t.id == dep)) {
+        problems.add('${target.id} depends on $dep, which is not in the plan');
+      } else if (!seen.contains(dep)) {
+        // Either later in the list or the target itself; both mean the order
+        // publishes it before what it needs.
+        problems.add('${target.id} is published before $dep, which it needs');
+      }
+    }
+  }
+  return problems;
+}

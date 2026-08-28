@@ -5,6 +5,15 @@ homepage: https://github.com/wilinz/wxscan
 repository: https://github.com/wilinz/wxscan
 issue_tracker: https://github.com/wilinz/wxscan/issues
 
+# pub.dev's own vocabulary, five at most. What someone browsing for this would
+# type: the format, the thing it does, and that the work happens in Rust.
+topics:
+  - qr-code
+  - barcode
+  - scanner
+  - image
+  - ffi
+
 # A plain Dart package, not a Flutter plugin: the native library is built and
 # bundled by hook/build.dart, which works for `dart run` and `dart test` as well
 # as for Flutter applications. That is why there are no android/, ios/, macos/,

@@ -62,7 +62,17 @@ class PublishKit {
 
     void pass(String message) => print('  ok    $message');
 
-    print('Repositories (under $workspaceRoot)');
+    print('Release plan');
+    final planIssues = planProblems();
+    if (planIssues.isEmpty) {
+      pass('${releasePlan.length} targets, each after what it depends on');
+    } else {
+      for (final issue in planIssues) {
+        fail(issue);
+      }
+    }
+
+    print('\nRepositories (under $workspaceRoot)');
     final versions = <Repo, String>{};
     for (final repo in Repo.values) {
       final root = rootOf(repo);
@@ -298,6 +308,14 @@ class PublishKit {
   /// Re-runnable: anything the registry already has is skipped, so an
   /// interrupted chain resumes rather than restarting.
   Future<void> publish({Set<String>? only}) async {
+    // Before anything is uploaded, because an upload cannot be taken back.
+    final planIssues = planProblems();
+    if (planIssues.isNotEmpty) {
+      throw StateError(
+        'The release plan is not publishable:\n  ${planIssues.join('\n  ')}',
+      );
+    }
+
     final targets = only == null
         ? releasePlan
         : releasePlan.where((t) => only.contains(t.id) || only.contains(t.name));
