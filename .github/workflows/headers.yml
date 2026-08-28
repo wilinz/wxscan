@@ -1,0 +1,42 @@
+# The C header the Apple plugins compile against.
+#
+# `packages/wxscan/src/wxscan.h` is cbindgen's output for the Rust crate, and
+# the two plugin directories hold verbatim copies of it: an iOS or macOS build
+# has no Rust toolchain and no generated file to reach for, so the header
+# travels with the plugin.
+#
+# Nothing catches a copy that falls behind. The Swift side resolves every
+# function with `dlsym` and takes only types from the header, so a copy still
+# describing a function signature that no longer exists compiles, links, and
+# runs — while documenting an API that is gone. One did, for a change that
+# turned scanner handles from pointers into counted numbers, and it was found
+# by reading rather than by anything failing.
+name: headers
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  copies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The plugin's copies match the generated header
+        run: |
+          for platform in ios macos; do
+            copy="packages/wxscan_live/$platform/Classes/wxscan.h"
+            if ! diff -u packages/wxscan/src/wxscan.h "$copy"; then
+              echo
+              echo "::error file=$copy::$copy is behind packages/wxscan/src/wxscan.h."
+              echo "Copy it over: cp packages/wxscan/src/wxscan.h $copy"
+              exit 1
+            fi
+          done
+          echo "both copies match"
