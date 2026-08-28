@@ -21,16 +21,16 @@ const _links = <_Link>[
     url: 'https://github.com/wilinz/wxscan',
   ),
   (
-    icon: Icons.memory,
-    title: 'wilinz/wxscan-weights',
-    subtitle: 'The two CNN models, and how they were converted',
-    url: 'https://github.com/wilinz/wxscan-weights',
-  ),
-  (
     icon: Icons.terminal,
     title: 'wilinz/wxscan-rs',
     subtitle: 'The Rust decoder underneath, built as a code asset',
     url: 'https://github.com/wilinz/wxscan-rs',
+  ),
+  (
+    icon: Icons.memory,
+    title: 'wilinz/wxscan-weights',
+    subtitle: 'The two CNN models, and how they were converted',
+    url: 'https://github.com/wilinz/wxscan-weights',
   ),
   (
     icon: Icons.public,
