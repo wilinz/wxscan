@@ -17,6 +17,10 @@ First release.
 - A `WxScanner` from `wxscan` can be lent to the controller, so an application
   that scans both live and from the photo library holds one scanner and one
   copy of the weights instead of two.
+- Fixed a preview that froze on its first frame in a browser, on every visit
+  to the scanner after the first. A `<video>` put into a host a platform view
+  had already taken out of the page is paused by the browser and stays paused
+  once it is attached again; Chromium does this and WebKit does not.
 - One camera, and the last controller to `initialize` has it. A second one
   takes it over rather than failing or splitting frames, and the controller
   that held it is told: its `value.error` becomes a `WxCameraLost` and its

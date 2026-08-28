@@ -306,6 +306,17 @@ differs:
 - Torch and zoom are `MediaStreamTrack` constraints. Browsers support them
   unevenly, so `hasTorch` and `zoomRange` report what the track actually
   claims — usually nothing on a desktop.
+- A `<video>` that leaves the page is paused by the browser, and stays paused
+  when it is put back. That is the HTML rule for a media element removed from a
+  document, and Chromium applies it while WebKit does not — which is why a
+  preview that froze on its first frame in Chrome on both a desktop and Android
+  was fine in Safari. Anything that moves the preview element between hosts has
+  to `play()` it again after attaching, and must never park it in a host that a
+  platform view has already taken out of the page. Both are handled in
+  [`platform_web.dart`](lib/src/web/platform_web.dart); the note is here
+  because from the outside it presents as a camera that opened and delivered
+  one frame, with a live track, an element in the page, and nothing in the
+  console.
 - The four files `wxscan` needs on the web have to be served by the
   application: `dart run wxscan:fetch_web` places them, fetching the compiled
   ones from the releases that package pins. Nothing has to be built —

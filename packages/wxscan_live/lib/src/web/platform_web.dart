@@ -139,6 +139,9 @@ class WxScanWeb extends WxScanPlatform {
         final element = _previewElement;
         if (element != null) {
           host.callMethod<JSAny?>('appendChild'.toJS, element);
+          // Attaching is not resuming: an element that was paused while it sat
+          // outside the page stays paused here.
+          _play(element);
         }
         return host;
       },
@@ -154,7 +157,37 @@ class WxScanWeb extends WxScanPlatform {
   /// stopped, and freezes or goes black.
   static void _showPreview(JSObject element) {
     _previewElement = element;
-    _previewHost?.callMethod<JSAny?>('replaceChildren'.toJS, element);
+    final host = _previewHost;
+    // Only into a host that is still in the page. The one left from a platform
+    // view that has since been taken out is a detached node, and a media
+    // element put there is paused by the browser — which it stays after being
+    // attached again, showing one frame and never another. That is the frozen
+    // preview on the second visit to a scanner: the picture was there, the
+    // track was live, and the element was simply paused. Dropping the stale
+    // reference leaves the element to the factory below, which attaches it to
+    // the host that is really on screen.
+    if (host == null || !_isConnected(host)) {
+      _previewHost = null;
+      return;
+    }
+    host.callMethod<JSAny?>('replaceChildren'.toJS, element);
+    _play(element);
+  }
+
+  /// Whether [node] is in the page, rather than in a tree of its own.
+  static bool _isConnected(JSObject node) =>
+      node.getProperty<JSBoolean>('isConnected'.toJS).toDart;
+
+  /// Starts the element again, for the pause that being out of the page
+  /// leaves behind. Playing already is not an error, and neither is a refusal:
+  /// the stream is muted and inline, so nothing here needs a gesture.
+  static void _play(JSObject element) {
+    try {
+      element.callMethod<JSPromise<JSAny?>>('play'.toJS).toDart.then(
+            (_) {},
+            onError: (Object _) {},
+          );
+    } on Object catch (_) {}
   }
 
   /// Takes a frame, scans it, and goes round again.
