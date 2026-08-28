@@ -28,6 +28,44 @@ enum WxScanBridge {
         }
     }
 
+    /// Creates a scanner from weight files on disk.
+    ///
+    /// The library reads them, so a megabyte of weights never crosses the
+    /// method channel. A nil path means that network is absent, as nil data is
+    /// to `create`.
+    ///
+    /// Returns 0 when a path cannot be read or is not weights, having logged
+    /// which of the two it was — that is the one thing the caller needs in
+    /// order to fix it, and the one thing a handle of zero cannot carry.
+    static func create(detectPath: String?, srPath: String?) -> Int {
+        guard let scannerNewPath = WxScanNative.scannerNewPath else { return 0 }
+        var status: Int32 = 0
+        let id = withOptionalCString(detectPath) { d in
+            withOptionalCString(srPath) { s in
+                scannerNewPath(d, s, &status)
+            }
+        }
+        if id == 0 {
+            let why: String
+            switch status {
+            case 1: why = "a path is not valid text"
+            case 2: why = "a file could not be read"
+            case 4: why = "a file was read but is not weights this build can load"
+            default: why = "the scanner could not be created"
+            }
+            NSLog("wxscan: \(why) — detect=\(detectPath ?? "nil") sr=\(srPath ?? "nil")")
+        }
+        return id
+    }
+
+    /// A Swift string as a C string for the duration of `body`, or NULL for nil.
+    private static func withOptionalCString<T>(
+        _ s: String?, _ body: (UnsafePointer<CChar>?) -> T
+    ) -> T {
+        guard let s else { return body(nil) }
+        return s.withCString { body($0) }
+    }
+
     /// Takes a reference to a scanner this side did not create, so that it
     /// stays alive for as long as this side needs it.
     ///

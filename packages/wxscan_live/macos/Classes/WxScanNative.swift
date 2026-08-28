@@ -18,6 +18,12 @@ enum WxScanNative {
     typealias ScannerNew = @convention(c) (
         UnsafePointer<UInt8>?, Int, UnsafePointer<UInt8>?, Int
     ) -> Int
+    /// The path form. Its status out-parameter says which of the three ways a
+    /// path can be wrong it was: 1 not text, 2 unreadable, 4 read but not
+    /// weights this build can load.
+    typealias ScannerNewPath = @convention(c) (
+        UnsafePointer<CChar>?, UnsafePointer<CChar>?, UnsafeMutablePointer<Int32>?
+    ) -> Int
     typealias ScannerRetain = @convention(c) (Int) -> Int
     typealias ScannerRelease = @convention(c) (Int) -> Void
     typealias HasDetector = @convention(c) (Int) -> Int32
@@ -33,6 +39,7 @@ enum WxScanNative {
     static var isAvailable: Bool { handle != nil }
 
     static let scannerNew: ScannerNew? = symbol("wxscan_scanner_new")
+    static let scannerNewPath: ScannerNewPath? = symbol("wxscan_scanner_new_path")
     static let scannerRetain: ScannerRetain? = symbol("wxscan_scanner_retain")
     static let scannerRelease: ScannerRelease? = symbol("wxscan_scanner_release")
     static let hasDetector: HasDetector? = symbol("wxscan_scanner_has_detector")

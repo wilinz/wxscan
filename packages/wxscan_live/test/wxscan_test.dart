@@ -35,17 +35,23 @@ class _FakePlatform extends WxScanPlatform {
   /// The scanner Dart lent, if any. Zero means "build your own".
   int? lastScannerHandle;
   Uint8List? lastDetectModel;
+  String? lastDetectModelPath;
+  String? lastSrModelPath;
 
   @override
   Future<Map<String, dynamic>?> initialize({
     required int shortSide,
     Uint8List? detectModel,
     Uint8List? srModel,
+    String? detectModelPath,
+    String? srModelPath,
     int scannerHandle = 0,
   }) async {
     lastShortSide = shortSide;
     lastScannerHandle = scannerHandle;
     lastDetectModel = detectModel;
+    lastDetectModelPath = detectModelPath;
+    lastSrModelPath = srModelPath;
     if (failInitialize) {
       throw PlatformException(code: 'INIT_ERROR', message: 'no camera');
     }
@@ -337,6 +343,57 @@ void main() {
       expect(a.value.error, isNull, reason: 'the loss it reported is over');
       expect(b.value.error, isA<WxCameraLost>(),
           reason: 'and b is the one told this time');
+    });
+  });
+
+  group('weights from a path', () {
+    test('the paths go to the platform and the bytes do not', () async {
+      final c = WxScanController();
+      controller = c;
+      await c.initialize(
+        detectModelPath: '/tmp/detect.tflite',
+        srModelPath: '/tmp/sr.tflite',
+      );
+
+      // The point of the path form: a megabyte of weights does not cross the
+      // channel, so nothing but the two strings should have been sent.
+      expect(fake.lastDetectModelPath, '/tmp/detect.tflite');
+      expect(fake.lastSrModelPath, '/tmp/sr.tflite');
+      expect(fake.lastDetectModel, isNull);
+    });
+
+    test('bytes and a path for the same model is refused', () async {
+      final c = WxScanController();
+      controller = c;
+      // Not a preference between them: taking one silently would mean the
+      // scanner ran on weights the caller did not think it had passed.
+      expect(
+        () => c.initialize(
+          detectModel: Uint8List.fromList([1, 2, 3]),
+          detectModelPath: '/tmp/detect.tflite',
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => c.initialize(
+          srModel: Uint8List.fromList([1, 2, 3]),
+          srModelPath: '/tmp/sr.tflite',
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('a lent scanner keeps the paths from being sent as well', () async {
+      final scanner = await WxScanner.create();
+      addTearDown(scanner.dispose);
+
+      final c = WxScanController(scanner: scanner);
+      controller = c;
+      await c.initialize(detectModelPath: '/tmp/detect.tflite');
+
+      expect(fake.lastScannerHandle, isNot(0));
+      expect(fake.lastDetectModelPath, isNull,
+          reason: 'the lent scanner already holds its weights');
     });
   });
 

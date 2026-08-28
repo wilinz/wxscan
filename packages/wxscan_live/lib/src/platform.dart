@@ -38,10 +38,17 @@ abstract class WxScanPlatform {
   /// Returns what the camera opened as, including a `sessionId` naming this
   /// session — the platform hands the camera to the last caller, so the id is
   /// how a caller later tells whether the camera it opened is still its own.
+  ///
+  /// [detectModelPath] and [srModelPath] are the same weights as files on
+  /// disk, for a caller that has paths. The platform reads them itself, so a
+  /// megabyte does not cross the method channel; a browser has no filesystem
+  /// and refuses them.
   Future<Map<String, dynamic>?> initialize({
     required int shortSide,
     Uint8List? detectModel,
     Uint8List? srModel,
+    String? detectModelPath,
+    String? srModelPath,
     int scannerHandle = 0,
   });
 
@@ -96,12 +103,18 @@ class MethodChannelWxScan extends WxScanPlatform {
     required int shortSide,
     Uint8List? detectModel,
     Uint8List? srModel,
+    String? detectModelPath,
+    String? srModelPath,
     int scannerHandle = 0,
   }) =>
       _method.invokeMapMethod<String, dynamic>('initialize', {
         'shortSide': shortSide,
         'detectModel': detectModel,
         'srModel': srModel,
+        // Omitted rather than sent as null, so the platform reads their
+        // absence the same way it reads an absent scanner handle.
+        if (detectModelPath != null) 'detectModelPath': detectModelPath,
+        if (srModelPath != null) 'srModelPath': srModelPath,
         // Omitted rather than sent as zero: the platform reads its absence as
         // "build your own", and a zero pointer arriving as a number is a
         // shape worth never producing.

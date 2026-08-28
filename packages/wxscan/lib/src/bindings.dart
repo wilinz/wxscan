@@ -247,6 +247,43 @@ external int wxscan_scanner_new(
   int sr_len,
 );
 
+/// Create a scanner from model files on disk.
+///
+/// The same scanner [`wxscan_scanner_new`] builds, for a caller that has paths
+/// rather than bytes — weights downloaded to a cache directory, say. The files
+/// are read here, so a megabyte of weights never crosses the caller's language
+/// boundary, and a binding does not need a file API of its own to offer this.
+///
+/// Either path may be NULL, meaning that network is simply absent, exactly as
+/// a NULL buffer is to [`wxscan_scanner_new`]. Both NULL is the mode without
+/// models.
+///
+/// Returns zero on any failure, and sets `status`, when not NULL, to say
+/// which: a path that is not UTF-8 is [`WxScanStatus::BadArgument`], a file
+/// that will not open is [`WxScanStatus::Unreadable`], and one that reads but
+/// is not weights this build can load is [`WxScanStatus::WeightsRefused`].
+/// Those are three different mistakes — a typo, a download that has not
+/// happened, a file that is not a model — and only the caller can tell which
+/// it made.
+///
+/// Release with [`wxscan_scanner_release`].
+///
+/// # Safety
+/// Each path, when not NULL, must be a NUL terminated string, and `status`,
+/// when not NULL, must point to a writable [`WxScanStatus`].
+@ffi.Native<
+  WxScanScannerId Function(
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Int32>,
+  )
+>()
+external int wxscan_scanner_new_path(
+  ffi.Pointer<ffi.Char> detect_path,
+  ffi.Pointer<ffi.Char> sr_path,
+  ffi.Pointer<ffi.Int32> status,
+);
+
 /// Set the downscale factor applied before detection.
 ///
 /// Values outside `(0, 1]` restore the default, which targets a 400x400 area.
@@ -353,7 +390,13 @@ enum WxScanStatus {
   /// else — a file shared into the application, say — and a caller that has
   /// to read those needs the platform's own decoder and
   /// [`wxscan_scan_pixels`].
-  UnsupportedFormat(3);
+  UnsupportedFormat(3),
+
+  /// Weights were read but no backend in this build would take them. Only
+  /// [`crate::scanner::wxscan_scanner_new_path`] reports this: a file that
+  /// is not a model is a different mistake from one that is not there, and
+  /// the caller who passed the path is the only one who can tell them apart.
+  WeightsRefused(4);
 
   final int value;
   const WxScanStatus(this.value);
@@ -363,6 +406,7 @@ enum WxScanStatus {
     1 => BadArgument,
     2 => Unreadable,
     3 => UnsupportedFormat,
+    4 => WeightsRefused,
     _ => throw ArgumentError('Unknown value for WxScanStatus: $value'),
   };
 }

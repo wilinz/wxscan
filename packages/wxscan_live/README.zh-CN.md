@@ -257,6 +257,23 @@ TFLite 权重传给 `initialize`，通常来自 asset。插件把它们加载进
 整个过程在原生侧，因为这条路径不经过 Dart。不传权重，或者权重加载失败，都会退回到不带
 CNN 阶段的解码，不会失败——`controller.value.modelsLoaded` 告诉你现在是哪种模式。
 
+权重在磁盘上就改传路径，文件由库来读，一兆字节不用过方法通道：
+
+```dart
+await controller.initialize(
+  detectModelPath: '${dir.path}/detect.tflite',
+  srModelPath: '${dir.path}/sr.tflite',
+);
+```
+
+这是给下载下来或者拷到某处的权重用的——**Flutter 的 asset 不是文件**。asset 在应用包
+里面，没有可打开的路径，`assets/models/detect.tflite` 在这里什么都不指；那种情况用
+`rootBundle` 读出字节传进去，快速开始里就是这么做的。
+
+一个模型只能用其中一种方式给，不能两种都给。路径读不出来和权重加载不了一样不致命：
+同样退回、同样通过 `modelsLoaded` 反映，原因连同路径打在原生日志里。浏览器上传路径会抛
+`UnsupportedError`——那里没有文件系统可读，悄悄忽略只会让页面在没有检测器的情况下扫。
+
 ### 共用一个扫描器
 
 一个既扫实时又扫相册的应用，不这么做就会有两个扫描器：内存里两份 CNN 权重，两套阈值，

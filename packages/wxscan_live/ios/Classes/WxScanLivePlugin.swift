@@ -224,6 +224,10 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             handleInitialize(
                 detect: (args?["detectModel"] as? FlutterStandardTypedData)?.data,
                 sr: (args?["srModel"] as? FlutterStandardTypedData)?.data,
+                // Paths instead of bytes: the library reads the files, so a
+                // megabyte of weights never crosses the method channel.
+                detectPath: args?["detectModelPath"] as? String,
+                srPath: args?["srModelPath"] as? String,
                 // A scanner Dart already holds, to be borrowed rather than
                 // built. Absent means build one here.
                 borrowed: (args?["scannerHandle"] as? NSNumber)?.intValue ?? 0,
@@ -286,6 +290,8 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     private func handleInitialize(
         detect: Data?,
         sr: Data?,
+        detectPath: String?,
+        srPath: String?,
         borrowed: Int,
         result: @escaping FlutterResult
     ) {
@@ -316,7 +322,9 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             sessionId = lastSessionId
             // The frames in flight are decoded with whatever this settles on;
             // the caller that had the camera is not reading them any more.
-            ensureScanner(detect: detect, sr: sr, borrowed: borrowed)
+            ensureScanner(
+                detect: detect, sr: sr,
+                detectPath: detectPath, srPath: srPath, borrowed: borrowed)
             let resolutionChanged = shortSide != boundShortSide
             boundShortSide = shortSide
             if resolutionChanged {
@@ -338,7 +346,9 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             ))
             return
         }
-        ensureScanner(detect: detect, sr: sr, borrowed: borrowed)
+        ensureScanner(
+                detect: detect, sr: sr,
+                detectPath: detectPath, srPath: srPath, borrowed: borrowed)
         starting = true
 
         sessionQueue.async {
@@ -858,7 +868,13 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
     /// Otherwise one is built here. A model that fails to load is not an
     /// error: the scanner falls back to the mode without models, which still
     /// decodes.
-    private func ensureScanner(detect: Data?, sr: Data?, borrowed: Int) {
+    private func ensureScanner(
+        detect: Data?,
+        sr: Data?,
+        detectPath: String?,
+        srPath: String?,
+        borrowed: Int
+    ) {
         // Whatever was held is given back first, unconditionally. Only the
         // caller that is about to own the camera reaches this — the ones that
         // failed, and the one that found a session being built, have returned
@@ -902,8 +918,18 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
             }
         }
 
-        scanner = WxScanBridge.create(detect: detect, sr: sr)
-        modelsLoaded = scanner != 0 && detect != nil
+        // Paths and buffers are not mixed: a caller sends one or the other,
+        // and the Dart side refuses anything else before it gets here.
+        if detectPath != nil || srPath != nil {
+            scanner = WxScanBridge.create(detectPath: detectPath, srPath: srPath)
+            modelsLoaded = scanner != 0 && detectPath != nil
+        } else {
+            scanner = WxScanBridge.create(detect: detect, sr: sr)
+            modelsLoaded = scanner != 0 && detect != nil
+        }
+        // A path that will not read is no more fatal than weights that will
+        // not load: decoding falls back to image processing, `modelsLoaded`
+        // says so, and the bridge has already logged which file and why.
         if scanner == 0 {
             scanner = WxScanBridge.create(detect: nil, sr: nil)
         }

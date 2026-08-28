@@ -65,11 +65,25 @@ class WxScanWeb extends WxScanPlatform {
     required int shortSide,
     Uint8List? detectModel,
     Uint8List? srModel,
+    // A browser has no filesystem to read a path from: the scanner here is a
+    // WebAssembly module in a worker, and a path names nothing it can open.
+    // Refused rather than ignored, because a path that is quietly dropped
+    // leaves the page decoding without its detector and nothing said.
+    String? detectModelPath,
+    String? srModelPath,
     // Ignored here. A browser has no handle to lend: the scanner is a worker,
     // reached by message, and this implementation starts its own. Nothing is
     // duplicated either way, so there is nothing to share.
     int scannerHandle = 0,
   }) async {
+    if (detectModelPath != null || srModelPath != null) {
+      throw UnsupportedError(
+        'wxscan_live: a browser cannot read weights from a path. Pass the '
+        'bytes instead — detectModel and srModel — fetched or loaded from an '
+        'asset.',
+      );
+    }
+
     // The browser's own handover: whatever was open is closed, and the caller
     // asking now gets a session of its own. It is the same rule as the native
     // bindings — the camera goes to whoever asked last — reached by a shorter

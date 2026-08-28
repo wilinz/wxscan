@@ -310,6 +310,27 @@ never goes through Dart. Omitting them, or passing weights that fail to load,
 falls back to decoding without the CNN stages rather than failing —
 `controller.value.modelsLoaded` reports which mode is active.
 
+Weights that live on disk go by path instead, and the library reads them, so a
+megabyte does not cross the method channel:
+
+```dart
+await controller.initialize(
+  detectModelPath: '${dir.path}/detect.tflite',
+  srModelPath: '${dir.path}/sr.tflite',
+);
+```
+
+That is for weights downloaded or copied somewhere — **a Flutter asset is not a
+file**. An asset lives inside the application package with no path to open, so
+`assets/models/detect.tflite` names nothing here; load it with `rootBundle` and
+pass the bytes, as the quick start does.
+
+A model is given one way or the other, never both, and a path that will not
+read is no more fatal than weights that will not load: the same fallback, the
+same `modelsLoaded`, and the reason logged natively with the path. In a browser
+a path throws `UnsupportedError` — there is no filesystem to read it from, and
+dropping it quietly would leave the page scanning without its detector.
+
 ### Sharing one scanner
 
 An application that scans both live and from the photo library otherwise holds

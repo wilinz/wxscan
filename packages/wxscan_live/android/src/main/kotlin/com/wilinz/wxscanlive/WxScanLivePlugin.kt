@@ -278,6 +278,10 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                     result,
                     call.argument<ByteArray>("detectModel"),
                     call.argument<ByteArray>("srModel"),
+                    // Paths instead of bytes: the library reads the files, so
+                    // a megabyte of weights never crosses the method channel.
+                    call.argument<String>("detectModelPath"),
+                    call.argument<String>("srModelPath"),
                     // A scanner Dart already holds, to be borrowed rather than
                     // built. Absent means build one here.
                     // Widths are the native side's business: a value too
@@ -421,7 +425,13 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
      * it falls back to plain image processing, which still scans, with a lower
      * detection rate on distant or small codes.
      */
-    private fun ensureScanner(detect: ByteArray?, sr: ByteArray?, borrowed: Long) {
+    private fun ensureScanner(
+        detect: ByteArray?,
+        sr: ByteArray?,
+        detectPath: String?,
+        srPath: String?,
+        borrowed: Long,
+    ) {
         // Whatever was held is given back first, unconditionally. Only the
         // caller that is about to own the camera reaches this — the ones that
         // failed, and the one that found a bind in flight, have returned
@@ -465,10 +475,21 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         }
 
         val empty = ByteArray(0)
+        val fromPaths = detectPath != null || srPath != null
         scannerHandle = try {
-            NativeScanner.create(detect ?: empty, sr ?: empty)
-        } catch (_: Throwable) { 0L }
-        modelsLoaded = scannerHandle != 0L && detect != null
+            // Paths and buffers are not mixed: a caller sends one or the other,
+            // and the Dart side refuses anything else before it gets here.
+            if (fromPaths) NativeScanner.createFromPaths(detectPath, srPath)
+            else NativeScanner.create(detect ?: empty, sr ?: empty)
+        } catch (e: Throwable) {
+            // Not fatal, as unloadable weights are not: decoding falls back to
+            // image processing and `modelsLoaded` says so. Logged with the
+            // path, because that is the one thing the caller needs to fix it
+            // and the one thing a boolean cannot carry.
+            android.util.Log.w(TAG, "scanner from paths failed: ${e.message}")
+            0L
+        }
+        modelsLoaded = scannerHandle != 0L && (detect != null || detectPath != null)
         if (scannerHandle == 0L) {
             scannerHandle = try { NativeScanner.create(empty, empty) } catch (_: Throwable) { 0L }
         }
@@ -501,6 +522,8 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         result: MethodChannel.Result,
         detect: ByteArray?,
         sr: ByteArray?,
+        detectPath: String?,
+        srPath: String?,
         borrowed: Long,
     ) {
         if (ContextCompat.checkSelfPermission(appContext, Manifest.permission.CAMERA)
@@ -514,7 +537,7 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             )
             return
         }
-        main.post { bindCamera(result, detect, sr, borrowed) }
+        main.post { bindCamera(result, detect, sr, detectPath, srPath, borrowed) }
     }
 
     private fun infoMap(textureId: Long): Map<String, Any> = mapOf(
@@ -531,6 +554,8 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         result: MethodChannel.Result,
         detect: ByteArray?,
         sr: ByteArray?,
+        detectPath: String?,
+        srPath: String?,
         borrowed: Long,
     ) {
         // Already bound, so this is a takeover: the camera goes to the caller
@@ -549,7 +574,7 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             sessionId = ++lastSessionId
             // The frames in flight are decoded with whatever this settles on;
             // the caller that had the camera is not reading them any more.
-            ensureScanner(detect, sr, borrowed)
+            ensureScanner(detect, sr, detectPath, srPath, borrowed)
             if (shortSide != boundShortSide) {
                 try { rebindUseCases() } catch (_: Throwable) {}
             }
@@ -560,7 +585,7 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             result.error("BUSY", "the camera is already starting", null)
             return
         }
-        ensureScanner(detect, sr, borrowed)
+        ensureScanner(detect, sr, detectPath, srPath, borrowed)
         starting = true
         try {
             lifecycleRegistry.currentState = Lifecycle.State.RESUMED

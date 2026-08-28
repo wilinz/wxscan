@@ -11,7 +11,7 @@
 //! Serialization therefore lives here, in the binding layer, rather than in the
 //! C ABI.
 
-use jni::objects::{JByteArray, JClass};
+use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jboolean, jint, jlong, jstring};
 use jni::JNIEnv;
 
@@ -74,6 +74,60 @@ pub extern "system" fn Java_com_wilinz_wxscanlive_core_NativeScanner_nativeCreat
             s.len(),
         )
     };
+    id as jlong
+}
+
+/// Create a scanner from model files on disk, returning an opaque handle.
+///
+/// The weights are read by the library, so a megabyte of them never crosses
+/// JNI — and Kotlin does not need a file API of its own to offer this. A null
+/// path means that network is simply absent, as an empty array is to
+/// [`Java_com_wilinz_wxscanlive_core_NativeScanner_nativeCreate`].
+///
+/// **A failure comes back as minus the `WxScanStatus` that explains it** — -1
+/// for a path that is not UTF-8, -2 for a file that will not open, -4 for one
+/// that reads but is not weights this build can load. Handles are positive, so
+/// the sign is enough to tell them apart, and it saves an out-parameter across
+/// a boundary that has no good way to carry one. Kotlin turns it back into an
+/// exception at once; nothing outside this pair of functions sees the number.
+///
+/// The handle must be released with [`Java_com_wilinz_wxscanlive_core_NativeScanner_nativeRelease`].
+#[no_mangle]
+pub extern "system" fn Java_com_wilinz_wxscanlive_core_NativeScanner_nativeCreatePath(
+    mut env: JNIEnv,
+    _class: JClass,
+    detect: JString,
+    sr: JString,
+) -> jlong {
+    // A path that will not come across is treated as absent rather than
+    // propagated: the throwable has to go either way, or it surfaces at some
+    // unrelated JNI call later.
+    let mut read = |env: &mut JNIEnv, p: &JString| -> Option<std::ffi::CString> {
+        if p.is_null() {
+            return None;
+        }
+        match env.get_string(p) {
+            Ok(v) => std::ffi::CString::new(v.to_string_lossy().as_ref()).ok(),
+            Err(_) => {
+                clear_pending(env);
+                None
+            }
+        }
+    };
+    let d = read(&mut env, &detect);
+    let s = read(&mut env, &sr);
+
+    let mut status = wxscan_ffi::WxScanStatus::Ok;
+    let id = unsafe {
+        wxscan_ffi::wxscan_scanner_new_path(
+            d.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
+            s.as_ref().map_or(std::ptr::null(), |c| c.as_ptr()),
+            &mut status,
+        )
+    };
+    if id == 0 {
+        return -(status as jlong);
+    }
     id as jlong
 }
 

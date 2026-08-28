@@ -308,11 +308,35 @@ class WxScanController extends ValueNotifier<WxScanValue> {
   /// no scanner was passed to the constructor — a lent scanner brings its own.
   /// Weights that fail to load are not fatal: it falls back to decoding without
   /// the CNN stages, and [WxScanValue.modelsLoaded] says which mode is active.
+  ///
+  /// [detectModelPath] and [srModelPath] are the same weights as files on
+  /// disk, for weights that were downloaded or copied somewhere rather than
+  /// held in memory. The platform reads them, so the megabyte never crosses
+  /// the method channel — and a path that will not read is not fatal either,
+  /// for the same reason unloadable bytes are not: it falls back, says so
+  /// through [WxScanValue.modelsLoaded], and logs which file and why.
+  ///
+  /// A model is given one way or the other, never both. **Flutter assets are
+  /// not files**: an asset lives inside the application package and has no
+  /// path to open, so `assets/models/detect.tflite` is a string that names
+  /// nothing here — load it with `rootBundle` and pass the bytes.
+  ///
+  /// Paths are unsupported in a browser, which has no filesystem to read: that
+  /// throws [UnsupportedError] rather than quietly scanning without a
+  /// detector.
   Future<void> initialize({
     Uint8List? detectModel,
     Uint8List? srModel,
+    String? detectModelPath,
+    String? srModelPath,
   }) async {
     _checkAlive();
+    if (detectModel != null && detectModelPath != null) {
+      throw ArgumentError('wxscan_live: pass detectModel or detectModelPath, not both');
+    }
+    if (srModel != null && srModelPath != null) {
+      throw ArgumentError('wxscan_live: pass srModel or srModelPath, not both');
+    }
     _asked = true;
     final result = await _platform.initialize(
       shortSide: value.resolution.shortSide,
@@ -321,6 +345,8 @@ class WxScanController extends ValueNotifier<WxScanValue> {
       // this avoids.
       detectModel: _scanner == null ? detectModel : null,
       srModel: _scanner == null ? srModel : null,
+      detectModelPath: _scanner == null ? detectModelPath : null,
+      srModelPath: _scanner == null ? srModelPath : null,
       // @internal, and deliberately so: the retain and release around this
       // are machinery, and an application reaching for the handle should hear
       // about it. This is the one place meant to, which is why the exemption

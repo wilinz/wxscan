@@ -40,6 +40,33 @@ object NativeScanner {
     fun create(detect: ByteArray, sr: ByteArray): Long = nativeCreate(detect, sr)
 
     /**
+     * Creates a scanner from weight files on disk.
+     *
+     * The library reads them, so a megabyte of weights never crosses JNI. A
+     * null path means that network is absent, as an empty array is to [create].
+     *
+     * @throws ModelFileException when a path cannot be read or is not weights.
+     *   A missing file is the caller's mistake and worth saying so: weights
+     *   that quietly fail to load leave the scanner on plain image processing,
+     *   and the only symptom is a detection rate nobody is measuring.
+     */
+    fun createFromPaths(detect: String?, sr: String?): Long {
+        val id = nativeCreatePath(detect, sr)
+        if (id > 0) return id
+        // The native side has no out-parameter to spare, so it answers a
+        // failure with minus the status that explains it. See the Rust doc on
+        // nativeCreatePath; the encoding ends here.
+        throw when (-id) {
+            STATUS_BAD_ARGUMENT -> ModelFileException("a model path is not valid text")
+            STATUS_UNREADABLE ->
+                ModelFileException("a model file could not be read: detect=$detect sr=$sr")
+            STATUS_WEIGHTS_REFUSED ->
+                ModelFileException("a model file was read but is not weights this build can load")
+            else -> ModelFileException("the scanner could not be created from those paths")
+        }
+    }
+
+    /**
      * Takes a reference to a scanner this side did not create, so that it stays
      * alive for as long as this side needs it.
      *
@@ -84,6 +111,7 @@ object NativeScanner {
     fun ping(): String = nativePing()
 
     private external fun nativeCreate(detect: ByteArray, sr: ByteArray): Long
+    private external fun nativeCreatePath(detect: String?, sr: String?): Long
     private external fun nativeRetain(handle: Long): Long
     private external fun nativeRelease(handle: Long)
     private external fun nativeHasDetector(handle: Long): Boolean
@@ -97,4 +125,13 @@ object NativeScanner {
         mirror: Boolean,
     ): String
     private external fun nativePing(): String
+
+    // WxScanStatus, as the C ABI numbers them. Only nativeCreatePath returns
+    // these, and only negated.
+    private const val STATUS_BAD_ARGUMENT = 1L
+    private const val STATUS_UNREADABLE = 2L
+    private const val STATUS_WEIGHTS_REFUSED = 4L
 }
+
+/** A weight file that could not be read, or that is not weights. */
+class ModelFileException(message: String) : Exception(message)
