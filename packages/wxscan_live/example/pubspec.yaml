@@ -12,6 +12,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   permission_handler: ^13.0.1
   image_picker: ^1.1.2
+  # Opening a decoded link, and the addresses on the about screen.
+  url_launcher: ^6.3.0
   image: ^4.2.0
   wxscan_live:
     path: ../

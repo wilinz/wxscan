@@ -8,6 +8,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:wxscan_live/wxscan_live.dart' show ScanResult;
 
+import 'about_page.dart';
 import 'pick_page.dart';
 import 'result_page.dart';
 import 'scan_page.dart';
@@ -118,7 +119,25 @@ class _HomePageState extends State<HomePage> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 32, 20, 24),
               children: [
-                Text('wxscan', style: theme.textTheme.displaySmall),
+                // The title and the way out to what this is, on one line:
+                // there is no app bar here, and an about screen nobody can
+                // find is the same as not having one.
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text('wxscan',
+                          style: theme.textTheme.displaySmall),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                            builder: (_) => const AboutPage()),
+                      ),
+                      icon: const Icon(Icons.info_outline),
+                      tooltip: 'About',
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 8),
                 Text(
                   'QR scanning that reads the codes other scanners give up on: '

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:wxscan_live/wxscan_live.dart';
 
+import 'open_link.dart';
+
 /// Result page: the decoded text plus its metadata (version, error
 /// correction level, charset).
 class ResultPage extends StatelessWidget {
@@ -83,6 +85,17 @@ class _ResultCard extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
+                // A decoded link is nearly always what the reader wanted to
+                // follow, so opening it is the first button rather than
+                // something to be reached by copying and pasting.
+                if (_isUrl) ...[
+                  FilledButton.icon(
+                    onPressed: () => openLink(context, result.text.trim()),
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: const Text('Open'),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 FilledButton.tonalIcon(
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: result.text));
