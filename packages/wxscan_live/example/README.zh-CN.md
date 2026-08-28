@@ -21,6 +21,9 @@ flutter run              # -d macos、连上的设备，等等
 
 第一次要编 Rust、下载 TFLite 库，得等几分钟；之后是增量的。
 
-TFLite 模型在 `assets/models/`，由
-[wxscan-rs](https://github.com/wilinz/wxscan-rs) 的 `tools/model_conversion` 从公开的
-Caffe 权重转过来。
+TFLite 模型放在 `assets/models/`。这份 checkout 里有，发到 pub.dev 的包里没有：一个
+example 的 1.1 MB 权重，是每次 `pub get` `wxscan_live` 都要付的 1.1 MB。没有它也照样
+编、照样跑，只是退回到纯图像处理这条路，首页会把这件事说出来，并指向
+[`assets/models/README.md`](assets/models/README.md)。权重去
+[wilinz/wxscan-weights](https://github.com/wilinz/wxscan-weights) 取，那里也放着
+`tools/convert.py`，从公开的 Caffe 模型生成它们的脚本。

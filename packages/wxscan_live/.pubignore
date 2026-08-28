@@ -9,3 +9,12 @@ example/macos/Pods/
 example/android/.gradle/
 example/ios/Flutter/ephemeral/
 example/macos/Flutter/ephemeral/
+
+# The example's weights, and the photograph it tests them on. 1.3 MB that
+# every `pub get` of this package would otherwise pay for, to run one example
+# — and the README says the weights are not distributed with the package, so
+# shipping them here contradicted it. A checkout has them; a copy from pub.dev
+# starts on the fallback engine and the home screen says so, with where to get
+# them. See example/assets/models/README.md.
+example/assets/models/*.tflite
+example/assets/test/qr_photo.jpg

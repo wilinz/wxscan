@@ -28,6 +28,11 @@ flutter run              # -d macos, an attached device, ...
 The first build compiles the Rust sources and downloads the TFLite library, so
 it takes a few minutes; later builds are incremental.
 
-The TFLite models are in `assets/models/`, converted from the published Caffe
-weights by `tools/model_conversion` in
-[wxscan-rs](https://github.com/wilinz/wxscan-rs).
+The TFLite models go in `assets/models/`. This checkout has them; the package
+published to pub.dev does not, because 1.1 MB of an example's weights is 1.1 MB
+every `pub get` of `wxscan_live` pays for. A copy without them still builds and
+runs, on plain image processing, and the home screen says so and points at
+[`assets/models/README.md`](assets/models/README.md) for where to get them:
+[wilinz/wxscan-weights](https://github.com/wilinz/wxscan-weights), which also
+holds `tools/convert.py`, the scripts that produce them from the published
+Caffe models.

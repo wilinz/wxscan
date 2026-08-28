@@ -31,14 +31,16 @@ flutter:
   uses-material-design: true
 
   assets:
-    # Prebuilt weights from github.com/wilinz/wxscan-weights, which also holds
-    # the scripts that convert them from the published Caffe models.
-    - assets/models/detect.tflite
-    - assets/models/sr.tflite
+    # Directories rather than the files themselves, because two of those files
+    # are not in the package published to pub.dev — the weights, and the
+    # photograph. A named asset that is not there fails the build; a directory
+    # takes what it finds, so a copy from pub.dev builds and runs, and says on
+    # the home screen that the weights are missing. See assets/models/README.md.
+    #
+    # Weights: detect.tflite and sr.tflite, from github.com/wilinz/wxscan-weights.
+    - assets/models/
     # Sample images for the startup self-test and the on-device tests.
-    - assets/test/qr_sample.png
-    - assets/test/qr_clean.png
-    - assets/test/qr_photo.jpg
+    - assets/test/
 
 # The example builds against this checkout, not against pub.dev. wxscan depends
 # on wxscan by a hosted constraint so that it can be published, and this

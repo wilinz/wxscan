@@ -37,6 +37,16 @@ class Scanner {
   /// Whether the CNN detector is active, which requires the models to load.
   static bool get nnEnabled => _nnEnabled;
 
+  /// Why the detector is off, in a sentence fit to put on screen, or null
+  /// while it is on.
+  ///
+  /// The weights are not in the package published to pub.dev — 1.1 MB of an
+  /// example's weights is 1.1 MB every `pub get` pays for — so running a copy
+  /// from there with no detector is an expected state, not a defect, and the
+  /// reader is owed the reason and the way out of it rather than a scanner
+  /// that quietly reads less. A checkout has the weights and never sees this.
+  static String? weightsProblem;
+
   /// The scanner, for the camera to decode with as well.
   ///
   /// Handing this to a `WxScanController` is what keeps this application to one
@@ -63,6 +73,14 @@ class Scanner {
       // application quietly on the fallback engine, and the only visible
       // symptom is that real photographs stop decoding.
       _log('the weights did not load: $e');
+      // Absent and unreadable are different problems and want different
+      // things said. rootBundle reports the first as an "Unable to load
+      // asset" FlutterError, which is the only way to tell them apart here.
+      weightsProblem = e.toString().contains('Unable to load asset')
+          ? 'detect.tflite and sr.tflite are not in assets/models/. The '
+              'published package does not carry them — see the README in '
+              'that directory for where to get them.'
+          : 'the weights are there but did not load: $e';
       detectModel = null;
       srModel = null;
     }
@@ -72,6 +90,13 @@ class Scanner {
     );
     // The label reports the detector, which is what changes the detection rate.
     _nnEnabled = _scanner!.hasDetector;
+    // Read but refused: the bytes arrived and the runtime would not take
+    // them. Rare, and indistinguishable from a missing file on screen unless
+    // it is said here.
+    if (!_nnEnabled) {
+      weightsProblem ??= 'the weights loaded but the runtime would not take '
+          'them, so the detector is off';
+    }
     _log('scanner ready: detector $_nnEnabled, '
         'sr ${_scanner!.hasSuperResolution}');
     return _nnEnabled;

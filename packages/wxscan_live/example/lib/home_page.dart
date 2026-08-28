@@ -183,15 +183,17 @@ class _HomePageState extends State<HomePage> {
   /// Which engine the weights left us with. Worth saying plainly: it is the
   /// difference between reading a code across a room and needing it held up to
   /// the lens, and a reader who sees the second one deserves to know why.
+  ///
+  /// Without them it is not a line but a panel, because it is the one state
+  /// here that the reader can do something about, and because a copy of this
+  /// example fetched from pub.dev starts in it: the weights are not in the
+  /// published package. A grey line under two cards is how that goes unread
+  /// until someone concludes the scanner is bad.
   Widget _engineLine(ThemeData theme) {
+    if (_nnEnabled == false) return _weightsMissing(theme);
     final (icon, text) = switch (_nnEnabled) {
       null => (Icons.hourglass_empty, 'Loading the weights'),
-      true => (Icons.memory, 'CNN detection and super resolution'),
-      false => (
-          Icons.warning_amber_outlined,
-          'Image processing only — the weights did not load, so small and '
-              'distant codes will be missed',
-        ),
+      _ => (Icons.memory, 'CNN detection and super resolution'),
     };
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,6 +208,52 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Said in full: what is running, what it costs, and what to do about it.
+  Widget _weightsMissing(ThemeData theme) {
+    final scheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.errorContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.error.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_outlined, size: 18, color: scheme.error),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Running without the weights',
+                  style: theme.textTheme.titleSmall,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Image processing only, so small and distant codes will be '
+                  'missed. Codes held up to the lens still read.',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+                if (Scanner.weightsProblem case final why?) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    why,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
