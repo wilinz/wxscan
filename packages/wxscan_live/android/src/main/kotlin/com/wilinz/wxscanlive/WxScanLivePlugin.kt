@@ -678,6 +678,21 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             bufW = it.width; bufH = it.height
         }
         recomputePreviewSize()
+
+        // One focus scan on open, because binding does not run one.
+        //
+        // CameraX binds with continuous auto-focus, and continuous means
+        // "react to what changes" — a phone already held over a code changes
+        // nothing, so the lens stays where the last session left it, which for
+        // scanning at 10 to 30 cm is usually far too far away. The picture is
+        // then too soft to detect anything in, and every assist an application
+        // might apply waits on a detection: no box, so nothing asks for focus,
+        // so the box never comes.
+        //
+        // AVFoundation is told `autoFocusRangeRestriction = .near` for the same
+        // reason. Camera2 has no equivalent, so it is asked for a scan instead
+        // and left to fall back to continuous by itself.
+        focusAt(0.5, 0.5)
     }
 
     /** Rebinds the use cases at the current shortSide, to change resolution.

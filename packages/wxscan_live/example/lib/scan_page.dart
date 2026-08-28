@@ -61,6 +61,10 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   /// zoom is wound back.
   int _emptyStreak = 0;
 
+  /// When frames stopped holding anything at all, for [_blindFocus]. Null
+  /// while the last frame had something in it.
+  DateTime? _nothingSince;
+
   /// When "one code decoded, but more than one seen" started. Non-null means
   /// we are waiting for the second one; see [_kMultiCodeGrace].
   DateTime? _multiWaitSince;
@@ -204,10 +208,12 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       _multiWaitSince = null;
       _autoZoom(frame);
       _autoFocus(frame);
+      _blindFocus(frame);
       return;
     }
     // Decoded, so the zoom has done its job and is wound back.
     _resetZoom();
+    _nothingSince = null;
 
     // Several codes in one frame: freeze the picture and let the user pick.
     // Freezing is required -- with the preview still running the picture
@@ -449,6 +455,44 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     _lastAutoFocusAt = now;
     _lastAutoFocusPoint = point;
     unawaited(_controller!.focusAt(x, y));
+  }
+
+  /// Focuses when there is nothing to focus on.
+  ///
+  /// [_autoFocus] needs a candidate box, and a picture too soft to detect
+  /// anything in has none. That is a state that holds itself shut: no box, so
+  /// nothing asks for focus, so the box never comes. A scanner opens in it
+  /// whenever the lens is left where the last session put it, and continuous
+  /// auto-focus does not rescue it — continuous reacts to what changes, and a
+  /// phone held steady over a code changes nothing.
+  ///
+  /// So stop waiting for the detector. Once a second of frames has held
+  /// neither a result nor a candidate, the picture is worth nothing as it
+  /// stands: a scan at the centre is the only thing that can change that, and
+  /// there is no reading in progress for it to interrupt.
+  void _blindFocus(ScanOutcome frame) {
+    final now = DateTime.now();
+    if (frame.candidates.isNotEmpty) {
+      _nothingSince = null;
+      return;
+    }
+    // Timed rather than counted in frames, which is what everything else here
+    // does: a frame is a whole CNN pass, so its rate falls with the resolution
+    // and with the device, and a count of them would mean half a second on one
+    // phone and three on another.
+    final since = _nothingSince ??= now;
+    if (now.difference(since) < _kBlindFocusAfter) return;
+
+    if (now.difference(_manualFocusAt) < _kManualFocusHold) return;
+    // Shares the clock with [_autoFocus] so the two cannot both drive the
+    // lens: whichever has something to say, the other holds off.
+    if (now.difference(_lastAutoFocusAt) < _kBlindFocusInterval) return;
+
+    _lastAutoFocusAt = now;
+    // Nothing was aimed at, so there is no point to compare the next one
+    // against.
+    _lastAutoFocusPoint = null;
+    unawaited(_controller!.focusAt(0.5, 0.5));
   }
 
   void _resetZoom() {
@@ -1394,6 +1438,17 @@ const double _kAutoFocusMoved = 0.06;
 
 /// The soonest it will focus on the same place twice.
 const Duration _kAutoFocusRepeat = Duration(seconds: 4);
+
+/// How long frames must hold nothing whatsoever before [_blindFocus] stops
+/// waiting for the detector. Long enough not to fire while the camera is still
+/// opening, short enough that someone who points the phone at a code and holds
+/// still is not left holding it.
+const Duration _kBlindFocusAfter = Duration(seconds: 1);
+
+/// And how often it may try again. Slower than [_kAutoFocusInterval], because
+/// it is aiming at nothing in particular and every scan softens the picture on
+/// its way through.
+const Duration _kBlindFocusInterval = Duration(seconds: 2);
 
 /// How long automatic zooming stands aside after a manual one.
 const Duration _kManualZoomHold = Duration(seconds: 5);

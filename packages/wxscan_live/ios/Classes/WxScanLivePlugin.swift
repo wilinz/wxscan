@@ -399,7 +399,25 @@ public class WxScanLivePlugin: NSObject, FlutterPlugin, FlutterStreamHandler,
                 )
                 self.applyOrientation()
 
-                self.sessionQueue.async { self.session.startRunning() }
+                self.sessionQueue.async {
+                    self.session.startRunning()
+                    // One focus scan once the session is live, because
+                    // continuous auto-focus reacts to what changes and a phone
+                    // already held over a code changes nothing: the lens stays
+                    // where the last session left it, which for scanning at 10
+                    // to 30 cm is usually far too far away. The picture is then
+                    // too soft to detect anything in, and every assist an
+                    // application might apply waits on a detection — no box, so
+                    // nothing asks for focus, so the box never comes.
+                    //
+                    // `autoFocusRangeRestriction = .near` narrows where the
+                    // lens looks; it does not make it look. This does, and
+                    // hands the device back to continuous a few seconds later.
+                    //
+                    // On the main thread, not this one: focusAt bumps
+                    // focusGeneration, which is that thread's alone.
+                    DispatchQueue.main.async { _ = self.focusAt(x: 0.5, y: 0.5) }
+                }
 
                 let (w, h) = self.currentPreviewSize()
                 self.sizeStream.push(width: w, height: h)

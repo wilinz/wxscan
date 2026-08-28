@@ -274,6 +274,18 @@ moves to a place with nothing there, which the next frame corrects and which
 costs nothing meanwhile, while waiting only delays the reading it was going to
 make possible.
 
+**Focus when nothing is found either.** The advice above waits on a candidate,
+and a picture too soft to detect anything in produces none — a state that holds
+itself shut: no box, so nothing asks for focus, so the box never comes. It is
+where a scanner opens whenever the lens is left where the last session put it,
+and continuous auto-focus does not rescue it, because continuous reacts to what
+*changes* and a phone held steady over a code changes nothing. The plugin asks
+for one scan when the camera opens for exactly this reason; an application
+should not stop there. When about a second of frames has held neither a result
+nor a candidate, `focusAt(0.5, 0.5)` — every second or two, and no more, since
+each scan softens the picture on its way through. There is no reading in
+progress for it to interrupt: that is the whole point of the state.
+
 **Freeze the picture before asking the user to pick.** When a frame decodes
 more than one code, the markers belong to *that* frame; with the preview still
 running the picture moves under them with every tremor of the hand and they can
