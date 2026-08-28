@@ -12,6 +12,73 @@ void main() {
     expect(wxscan_ping(), isNonZero);
   });
 
+  group('holding a scanner for no longer than it is needed', () {
+    // These run in one isolate with everything else in this file, so they take
+    // the count as they find it rather than assuming it starts at zero.
+
+    test('a disposed scanner stops being counted', () async {
+      final before = WxScanner.liveCount;
+      final scanner = await WxScanner.create();
+      expect(WxScanner.liveCount, before + 1);
+
+      await scanner.dispose();
+      expect(WxScanner.liveCount, before);
+    });
+
+    test('disposing twice is not counted twice', () async {
+      final before = WxScanner.liveCount;
+      final scanner = await WxScanner.create();
+      await scanner.dispose();
+      await scanner.dispose();
+      expect(WxScanner.liveCount, before);
+    });
+
+    test('use disposes the scanner it made', () async {
+      final before = WxScanner.liveCount;
+      late WxScanner borrowed;
+      final answer = await WxScanner.use((scanner) async {
+        borrowed = scanner;
+        expect(WxScanner.liveCount, before + 1, reason: 'alive inside');
+        final gray = Uint8List(64 * 64)..fillRange(0, 64 * 64, 255);
+        return (await scanner.scanGray(gray, 64, 64)).results.length;
+      });
+
+      expect(answer, 0);
+      expect(WxScanner.liveCount, before, reason: 'and gone after');
+      // Gone means gone: the scanner is not something to keep hold of.
+      expect(() => borrowed.scanGray(Uint8List(4), 2, 2), throwsStateError);
+    });
+
+    test('use disposes the scanner when the body throws', () async {
+      final before = WxScanner.liveCount;
+      await expectLater(
+        WxScanner.use((scanner) async => throw StateError('from the body')),
+        throwsStateError,
+      );
+      expect(WxScanner.liveCount, before);
+    });
+
+    test('a disposed scanner refuses to be lent', () async {
+      final scanner = await WxScanner.create();
+      await scanner.dispose();
+      // Handing this to a camera plugin would have it retain a handle that
+      // names nothing, and quietly build a scanner with no weights instead.
+      expect(() => scanner.nativeHandle, throwsStateError);
+    });
+
+    test('a scanner lent out is still one scanner', () async {
+      final before = WxScanner.liveCount;
+      final scanner = await WxScanner.create();
+      // What wxscan_live does with the handle. Taking a second reference to it
+      // does not make a second scanner, and the count says so.
+      expect(WxScanner.liveCount, before + 1);
+      expect(scanner.nativeHandle, isNonZero);
+      expect(WxScanner.liveCount, before + 1);
+      await scanner.dispose();
+      expect(WxScanner.liveCount, before);
+    });
+  });
+
   group('a scanner without models', () {
     late WxScanner scanner;
 

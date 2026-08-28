@@ -20,6 +20,8 @@ dependencies:
   native_toolchain_rust: ^1.0.6
   archive: ^4.0.0
   crypto: ^3.0.0
+  # For @internal on the native handle wxscan_live borrows.
+  meta: ^1.15.0
 
 dev_dependencies:
   ffigen: ^19.1.0

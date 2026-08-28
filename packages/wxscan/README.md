@@ -165,6 +165,12 @@ Mismatched dimensions raise `ArgumentError` rather than returning an empty
 result. A buffer that does not match its width and height is a mistake in the
 call, and an empty outcome would hide it as a frame with nothing in it.
 
+A scanner can also be lent to
+[`wxscan_live`](https://pub.dev/packages/wxscan_live) — `WxScanController(scanner:
+scanner)` — so an application that scans both live and from the photo library
+holds one scanner rather than two, with one copy of the weights in memory. The
+controller borrows it and never disposes it.
+
 ### Tuning detection
 
 `confidenceThreshold`, `nmsThreshold` and `scaleFactor` read and write on the

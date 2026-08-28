@@ -5,6 +5,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+import 'package:meta/meta.dart';
 
 import 'bindings.dart';
 import 'ffi.dart';
@@ -59,8 +60,37 @@ class WxScanner implements ffi.Finalizable {
         _scaleFactor = snapshot.scaleFactor,
         _confidenceThreshold = snapshot.confidenceThreshold,
         _nmsThreshold = snapshot.nmsThreshold {
-    _finalizer.attach(this, _handle.cast(), detach: this);
+    // The finalizer carries one machine word to the release function, which is
+    // exactly what a handle is. Typed as a pointer because that is the only
+    // token a NativeFinalizer takes; nothing ever dereferences it, here or in
+    // Rust. Handles start at one, so the token is never null.
+    _finalizer.attach(this, ffi.Pointer<ffi.Void>.fromAddress(_handle),
+        detach: this);
+    _leakWatch?.attach(this, _handle, detach: this);
   }
+
+  /// Says so when a scanner reaches the collector without having been disposed.
+  ///
+  /// Only the native finalizer above actually releases anything; this one runs
+  /// beside it purely to leave a line in the log, because from the outside a
+  /// scanner whose weights sat in memory until a collection happened to come
+  /// round looks exactly like one that was disposed on time. Best-effort, as
+  /// every finalizer is, and absent in a release build.
+  static final Finalizer<int>? _leakWatch = () {
+    Finalizer<int>? watch;
+    assert(() {
+      watch = Finalizer<int>((handle) {
+        developer.log(
+          'a scanner ($handle) was collected without dispose(). It is released '
+          'now, but its models stayed in memory until the collector reached '
+          'it. Dispose it where it goes out of use, or use WxScanner.use().',
+          name: 'wxscan',
+        );
+      });
+      return true;
+    }());
+    return watch;
+  }();
 
   static final _finalizer = ffi.NativeFinalizer(scannerFinalizer);
 
@@ -69,7 +99,10 @@ class WxScanner implements ffi.Finalizable {
   /// is inside a call that uses it.
   static final _busy = <WxScanner>{};
 
-  final ffi.Pointer<WxScanScanner> _handle;
+  /// The scanner, as the library's own handle for it. Not an address: it names
+  /// an entry in a table inside the library, so a stale one is refused rather
+  /// than followed.
+  final int _handle;
   final _ScanWorker _worker;
   bool _disposed = false;
 
@@ -93,6 +126,50 @@ class WxScanner implements ffi.Finalizable {
   double _confidenceThreshold;
   double _nmsThreshold;
 
+  /// How many scanners are alive in this process, this one included.
+  ///
+  /// For finding one that was never disposed. A test can assert it is back to
+  /// zero at the end; a screen that opens and closes can be watched across a
+  /// few passes to see whether it climbs. It counts scanners, not holders, so
+  /// one lent to `wxscan_live` still counts once.
+  ///
+  /// This is a diagnostic. Nothing about how an application scans should depend
+  /// on it.
+  static int get liveCount => wxscan_scanner_count();
+
+  /// Runs [body] with a scanner, and disposes it however that ends.
+  ///
+  /// For work with a beginning and an end — a picture the user just picked, a
+  /// batch of files — where a scanner that outlives it is only a way to forget
+  /// to dispose it:
+  ///
+  /// ```dart
+  /// final outcome = await WxScanner.use(
+  ///   (scanner) => scanner.scanImage(bytes),
+  ///   detectModel: detect,
+  ///   srModel: sr,
+  /// );
+  /// ```
+  ///
+  /// Do not use it for a screen that scans continuously: creating a scanner
+  /// builds an inference interpreter, which is far too much to pay per frame.
+  /// Hold one for as long as the screen lives and [dispose] it there.
+  ///
+  /// The scanner is gone by the time this returns, so nothing [body] hands back
+  /// may reference it. Results do not: they are plain values.
+  static Future<R> use<R>(
+    FutureOr<R> Function(WxScanner scanner) body, {
+    Uint8List? detectModel,
+    Uint8List? srModel,
+  }) async {
+    final scanner = await create(detectModel: detectModel, srModel: srModel);
+    try {
+      return await body(scanner);
+    } finally {
+      await scanner.dispose();
+    }
+  }
+
   /// Creates a scanner from model bytes.
   ///
   /// The weights may be TFLite or ONNX; which formats work depends on the
@@ -112,9 +189,13 @@ class WxScanner implements ffi.Finalizable {
     // the platform has nothing to lend.
     installPlatformImageDecoder();
     final worker = await _ScanWorker.spawn();
+    // Declared out here so the catch below can give it back: between the
+    // native scanner existing and a WxScanner being built around it, nothing
+    // else holds it.
+    var handle = 0;
     try {
-      var address = await worker.run(_CreateRequest(detectModel, srModel));
-      if (address == 0) {
+      handle = await worker.run(_CreateRequest(detectModel, srModel));
+      if (handle == 0) {
         // A model that will not load is not fatal; plain decoding still reads
         // ordinary symbols. It is worth saying out loud, though: this used to
         // happen silently, and a whole platform ran without its detector for
@@ -124,14 +205,19 @@ class WxScanner implements ffi.Finalizable {
           'continuing without them, so detection is image processing only',
           name: 'wxscan',
         );
-        address = await worker.run(const _CreateRequest(null, null));
+        handle = await worker.run(const _CreateRequest(null, null));
       }
-      if (address == 0) {
+      if (handle == 0) {
         throw StateError('wxscan: could not create a scanner');
       }
-      final snapshot = await worker.run(_SnapshotRequest(address));
-      return WxScanner._(ffi.Pointer.fromAddress(address), worker, snapshot);
+      final snapshot = await worker.run(_SnapshotRequest(handle));
+      return WxScanner._(handle, worker, snapshot);
     } catch (_) {
+      // The native scanner exists by now, and no WxScanner was built to carry
+      // a finalizer for it, so nothing else will ever give it back. Releasing
+      // it here is the only chance: otherwise it holds its weights for the
+      // life of the process, which is what liveCount would go on reporting.
+      if (handle != 0) wxscan_scanner_release(handle);
       await worker.close();
       rethrow;
     }
@@ -185,7 +271,7 @@ class WxScanner implements ffi.Finalizable {
   /// already reflects, so it is swallowed rather than left to surface as an
   /// unhandled asynchronous error.
   void _configure(_Setting setting, double value) {
-    _track(_worker.run(_ConfigRequest(_handle.address, setting, value)))
+    _track(_worker.run(_ConfigRequest(_handle, setting, value)))
         .ignore();
   }
 
@@ -218,7 +304,7 @@ class WxScanner implements ffi.Finalizable {
     _checkAlive();
     _validatePixels(pixels, width, height, format);
     return _track(_worker.run(_PixelsRequest(
-      _handle.address,
+      _handle,
       pixels,
       width,
       height,
@@ -249,7 +335,7 @@ class WxScanner implements ffi.Finalizable {
     final stride = rowStride ?? width;
     _validateFrame(data, width, height, stride, rotation);
     return _track(_worker.run(_FrameRequest(
-      _handle.address,
+      _handle,
       data,
       width,
       height,
@@ -278,14 +364,14 @@ class WxScanner implements ffi.Finalizable {
   Future<ScanOutcome> scanPath(String path) async {
     _checkAlive();
     final (status, outcome) =
-        await _track(_worker.run(_PathRequest(_handle.address, path)));
+        await _track(_worker.run(_PathRequest(_handle, path)));
     return _unwrapPath(path, status, outcome);
   }
 
   /// Decodes a picture on disk on the current isolate. See [scanPath].
   ScanOutcome scanPathSync(String path) {
     _checkAlive();
-    final (status, outcome) = _PathRequest(_handle.address, path).run();
+    final (status, outcome) = _PathRequest(_handle, path).run();
     return _unwrapPath(path, status, outcome);
   }
 
@@ -310,14 +396,14 @@ class WxScanner implements ffi.Finalizable {
   Future<ScanOutcome> scanImage(Uint8List data) async {
     _checkAlive();
     final (status, outcome) =
-        await _track(_worker.run(_BytesRequest(_handle.address, data)));
+        await _track(_worker.run(_BytesRequest(_handle, data)));
     return _unwrapPath(null, status, outcome);
   }
 
   /// Decodes an encoded picture on the current isolate. See [scanImage].
   ScanOutcome scanImageSync(Uint8List data) {
     _checkAlive();
-    final (status, outcome) = _BytesRequest(_handle.address, data).run();
+    final (status, outcome) = _BytesRequest(_handle, data).run();
     return _unwrapPath(null, status, outcome);
   }
 
@@ -334,7 +420,7 @@ class WxScanner implements ffi.Finalizable {
   }) {
     _checkAlive();
     _validatePixels(pixels, width, height, format);
-    return _PixelsRequest(_handle.address, pixels, width, height, format).run();
+    return _PixelsRequest(_handle, pixels, width, height, format).run();
   }
 
   /// Decodes a camera frame on the current isolate. See [scanFrame].
@@ -350,7 +436,7 @@ class WxScanner implements ffi.Finalizable {
     final stride = rowStride ?? width;
     _validateFrame(data, width, height, stride, rotation);
     return _FrameRequest(
-      _handle.address,
+      _handle,
       data,
       width,
       height,
@@ -358,6 +444,38 @@ class WxScanner implements ffi.Finalizable {
       rotation,
       mirror,
     ).run();
+  }
+
+  /// The library's handle for this scanner, for a camera plugin to scan with.
+  ///
+  /// This exists so that `wxscan_live` can drive the camera against the same
+  /// scanner an application already holds, rather than building a second one:
+  /// two scanners mean two copies of the CNN weights in memory, and a
+  /// threshold changed on one that the other never sees.
+  ///
+  /// Not an address. It names an entry in a table inside the library, so a
+  /// handle that has been released is refused rather than followed — which is
+  /// what makes it safe to hand to another language at all, where the two
+  /// sides cannot see each other's lifetimes. A borrower takes its own
+  /// reference to it and gives that back when it is done; the scanner goes
+  /// when its last holder does, in whichever order that happens.
+  ///
+  /// Not for application code all the same: the pairing is machinery, and a
+  /// borrow that is never given back keeps the weights in memory for the life
+  /// of the process.
+  ///
+  /// Zero in a browser, which has no such handle: the scanner is a worker
+  /// there, and the camera reaches it by message.
+  @internal
+  int get nativeHandle {
+    // Guarded like every other member. A disposed scanner's handle names
+    // nothing, and the borrower's fallback for that is to build a scanner of
+    // its own — from weights the borrower deliberately did not send, because
+    // it believed it was being lent one. The camera would come up without its
+    // detector and nothing would say why, so the mistake is refused here
+    // instead, where it was made.
+    _checkAlive();
+    return _handle;
   }
 
   /// Releases the native scanner and its worker isolate. Further calls throw.
@@ -375,7 +493,8 @@ class WxScanner implements ffi.Finalizable {
     await _worker.close();
     _busy.remove(this);
     _finalizer.detach(this);
-    wxscan_scanner_free(_handle);
+    _leakWatch?.detach(this);
+    wxscan_scanner_release(_handle);
   }
 
   void _checkAlive() {
@@ -471,7 +590,7 @@ class _CreateRequest extends _Request<int> {
         detect?.length ?? 0,
         srBuf ?? ffi.nullptr,
         sr?.length ?? 0,
-      ).address;
+      );
     } finally {
       if (detectBuf != null) calloc.free(detectBuf);
       if (srBuf != null) calloc.free(srBuf);
@@ -500,13 +619,12 @@ class _Snapshot {
 }
 
 class _SnapshotRequest extends _Request<_Snapshot> {
-  const _SnapshotRequest(this.handleAddress);
+  const _SnapshotRequest(this.handle);
 
-  final int handleAddress;
+  final int handle;
 
   @override
   _Snapshot run() {
-    final handle = ffi.Pointer<WxScanScanner>.fromAddress(handleAddress);
     return _Snapshot(
       hasDetector: wxscan_scanner_has_detector(handle) != 0,
       hasSuperResolution: wxscan_scanner_has_super_resolution(handle) != 0,
@@ -518,15 +636,14 @@ class _SnapshotRequest extends _Request<_Snapshot> {
 }
 
 class _ConfigRequest extends _Request<void> {
-  const _ConfigRequest(this.handleAddress, this.setting, this.value);
+  const _ConfigRequest(this.handle, this.setting, this.value);
 
-  final int handleAddress;
+  final int handle;
   final _Setting setting;
   final double value;
 
   @override
   void run() {
-    final handle = ffi.Pointer<WxScanScanner>.fromAddress(handleAddress);
     switch (setting) {
       case _Setting.scaleFactor:
         wxscan_scanner_set_scale_factor(handle, value);
@@ -543,7 +660,7 @@ class _ConfigRequest extends _Request<void> {
 /// to native code would not survive.
 class _FrameRequest extends _Request<ScanOutcome> {
   const _FrameRequest(
-    this.handleAddress,
+    this.handle,
     this.data,
     this.width,
     this.height,
@@ -552,7 +669,7 @@ class _FrameRequest extends _Request<ScanOutcome> {
     this.mirror,
   );
 
-  final int handleAddress;
+  final int handle;
   final Uint8List data;
   final int width;
   final int height;
@@ -563,7 +680,7 @@ class _FrameRequest extends _Request<ScanOutcome> {
   @override
   ScanOutcome run() => _withNative(data, (buf) {
         return wxscan_scan_frame(
-          ffi.Pointer<WxScanScanner>.fromAddress(handleAddress),
+          handle,
           buf,
           width,
           height,
@@ -576,14 +693,14 @@ class _FrameRequest extends _Request<ScanOutcome> {
 
 class _PixelsRequest extends _Request<ScanOutcome> {
   const _PixelsRequest(
-    this.handleAddress,
+    this.handle,
     this.pixels,
     this.width,
     this.height,
     this.format,
   );
 
-  final int handleAddress;
+  final int handle;
   final Uint8List pixels;
   final int width;
   final int height;
@@ -592,7 +709,7 @@ class _PixelsRequest extends _Request<ScanOutcome> {
   @override
   ScanOutcome run() => _withNative(pixels, (buf) {
         return wxscan_scan_pixels(
-          ffi.Pointer<WxScanScanner>.fromAddress(handleAddress),
+          handle,
           buf,
           width,
           height,
@@ -623,9 +740,9 @@ ScanOutcome _unwrapPath(String? path, int status, ScanOutcome outcome) =>
 /// Reads a picture from a path natively, carrying the status back rather than
 /// throwing: the worker isolate flattens exception types on the way out.
 class _PathRequest extends _Request<(int, ScanOutcome)> {
-  const _PathRequest(this.handleAddress, this.path);
+  const _PathRequest(this.handle, this.path);
 
-  final int handleAddress;
+  final int handle;
   final String path;
 
   @override
@@ -635,7 +752,7 @@ class _PathRequest extends _Request<(int, ScanOutcome)> {
     ffi.Pointer<WxScanResults> out = ffi.nullptr;
     try {
       out = wxscan_scan_path(
-        ffi.Pointer<WxScanScanner>.fromAddress(handleAddress),
+        handle,
         cPath.cast(),
         status,
       );
@@ -652,9 +769,9 @@ class _PathRequest extends _Request<(int, ScanOutcome)> {
 /// Decodes an encoded picture held in memory, carrying the status back rather
 /// than throwing, for the same reason [_PathRequest] does.
 class _BytesRequest extends _Request<(int, ScanOutcome)> {
-  const _BytesRequest(this.handleAddress, this.data);
+  const _BytesRequest(this.handle, this.data);
 
-  final int handleAddress;
+  final int handle;
   final Uint8List data;
 
   @override
@@ -665,7 +782,7 @@ class _BytesRequest extends _Request<(int, ScanOutcome)> {
     ffi.Pointer<WxScanResults> out = ffi.nullptr;
     try {
       out = wxscan_scan_bytes(
-        ffi.Pointer<WxScanScanner>.fromAddress(handleAddress),
+        handle,
         buf,
         data.length,
         status,
@@ -705,25 +822,68 @@ ScanOutcome _withNative(
 /// round trip per frame rather than an isolate spawn. Requests are answered in
 /// order, which matches the native side serializing them anyway.
 class _ScanWorker {
-  _ScanWorker._(this._isolate, this._commands, this._responses) {
+  _ScanWorker._(this._isolate, this._commands, this._responses, this._exit) {
     _responses.listen(_onResponse);
+    // An isolate that dies without answering would otherwise leave every
+    // caller waiting forever, and `close` — which waits for exactly those
+    // futures — would never return. That is worse than it sounds: `dispose`
+    // awaits `close`, so the scanner would never be released, never leave the
+    // set that holds it, and the finalizer standing behind it could never run
+    // either. One dead isolate would pin the models for the life of the
+    // process and hang everything that touched it.
+    _exit.listen((_) => _failAll('the scanner isolate stopped unexpectedly'));
   }
 
   final Isolate _isolate;
   final SendPort _commands;
   final ReceivePort _responses;
+
+  /// Told when the isolate stops for any reason, including one it did not
+  /// choose: an uncaught error, or the process running out of memory.
+  final ReceivePort _exit;
+
   final _pending = <int, Completer<Object?>>{};
   var _nextId = 0;
+
+  /// No longer taking work. Set by [close], and by the isolate dying.
   var _closed = false;
+
+  /// The ports are shut and the isolate is killed. Separate from [_closed]
+  /// because an isolate that died on its own stops taking work without any of
+  /// that having happened yet, and [close] still has to do it.
+  var _cleaned = false;
 
   static Future<_ScanWorker> spawn() async {
     final setup = ReceivePort();
-    final isolate = await Isolate.spawn(_entry, setup.sendPort);
+    final exit = ReceivePort();
+    final isolate = await Isolate.spawn(
+      _entry,
+      setup.sendPort,
+      onExit: exit.sendPort,
+      onError: exit.sendPort,
+    );
     final responses = ReceivePort();
     final commands = await setup.first as SendPort;
     setup.close();
     commands.send(responses.sendPort);
-    return _ScanWorker._(isolate, commands, responses);
+    return _ScanWorker._(isolate, commands, responses, exit);
+  }
+
+  /// Fails everything still outstanding, for when no answer is ever coming.
+  ///
+  /// Closing is part of it: an isolate that has stopped will not answer the
+  /// next request either, and `run` would go on handing out futures that
+  /// nobody completes — which puts back exactly the hang this is here to
+  /// prevent, one request later. It runs even with nothing pending, because an
+  /// isolate that dies while idle still has to stop taking work.
+  void _failAll(String why) {
+    _closed = true;
+    if (_pending.isEmpty) return;
+    final waiting = _pending.values.toList(growable: false);
+    _pending.clear();
+    for (final c in waiting) {
+      if (!c.isCompleted) c.completeError(StateError('wxscan: $why'));
+    }
   }
 
   /// Whether any request is still outstanding.
@@ -757,7 +917,8 @@ class _ScanWorker {
   /// uses the scanner, and freeing that out from under it is a use after free.
   /// Killing would not even interrupt such a call, which cannot be preempted.
   Future<void> close() async {
-    if (_closed) return;
+    if (_cleaned) return;
+    _cleaned = true;
     _closed = true;
     if (_pending.isNotEmpty) {
       await Future.wait(
@@ -767,6 +928,7 @@ class _ScanWorker {
       );
     }
     _responses.close();
+    _exit.close();
     _isolate.kill(priority: Isolate.immediate);
   }
 

@@ -1,9 +1,10 @@
-//! JNI entry points for `com.wilinz.wxscan.core.NativeScanner`.
+//! JNI entry points for `com.wilinz.wxscanlive.core.NativeScanner`.
 //!
 //! Camera frames on Android reach the scanner from Kotlin without passing
-//! through Dart. A caller on this path owns its own scanner, created and
-//! destroyed here, and never touches the Dart bindings of this package; the two
-//! entry points share the library, not an instance.
+//! through Dart. A caller on this path either creates its own scanner here or
+//! is handed the handle of one the Dart side already holds — the handles are
+//! the same numbers on both paths, since they name entries in one table inside
+//! the library rather than anything belonging to either binding.
 //!
 //! Results are returned as a JSON document because that is the cheapest way to
 //! move a small variable-length structure across JNI and then a method channel.
@@ -15,23 +16,57 @@ use jni::sys::{jboolean, jint, jlong, jstring};
 use jni::JNIEnv;
 
 use wxscan::frame::upright_gray;
-use wxscan_ffi::WxScanScanner;
+use wxscan_ffi::WxScanScannerId;
+
+/// A `jlong` as a handle, or 0 if it cannot be one.
+///
+/// `usize` is 32 bits on armeabi-v7a, so a plain `as` cast would truncate —
+/// and truncation is worse than rejection here: `0x1_0000_0001` would come
+/// down to `1` and hit a live scanner that the caller never named. Anything
+/// that does not fit names nothing, which is what 0 means.
+fn handle_of(v: jlong) -> WxScanScannerId {
+    WxScanScannerId::try_from(v).unwrap_or(0)
+}
+
+/// Drops a Java exception this side has decided to handle itself.
+///
+/// jni-rs leaves a throwable pending when it reports `JavaException`, and every
+/// entry point here answers with an empty result rather than propagating one.
+/// Leaving it pending would be undefined behaviour at the next JNI call and an
+/// abort under CheckJNI, and it would surface at some unrelated boundary later.
+fn clear_pending(env: &mut JNIEnv) {
+    if env.exception_check().unwrap_or(false) {
+        let _ = env.exception_clear();
+    }
+}
 
 /// Create a scanner from model buffers, returning an opaque handle, or 0 if a
 /// model fails to load. Passing empty arrays selects the mode without models,
 /// which still decodes but detects small or distant symbols less reliably.
 ///
-/// The handle must be released with [`Java_com_wilinz_wxscanlive_core_NativeScanner_nativeDestroy`].
+/// The handle must be released with [`Java_com_wilinz_wxscanlive_core_NativeScanner_nativeRelease`].
 #[no_mangle]
 pub extern "system" fn Java_com_wilinz_wxscanlive_core_NativeScanner_nativeCreate(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     detect: JByteArray,
     sr: JByteArray,
 ) -> jlong {
-    let read = |a: &JByteArray| -> Vec<u8> { env.convert_byte_array(a).unwrap_or_default() };
-    let (d, s) = (read(&detect), read(&sr));
-    let ptr = unsafe {
+    // A copy that fails leaves a Java exception pending, and this side answers
+    // with the mode without models rather than propagating one — so the
+    // throwable has to go, or it surfaces at some unrelated JNI call later.
+    let mut read = |env: &mut JNIEnv, a: &JByteArray| -> Vec<u8> {
+        match env.convert_byte_array(a) {
+            Ok(v) => v,
+            Err(_) => {
+                clear_pending(env);
+                Vec::new()
+            }
+        }
+    };
+    let d = read(&mut env, &detect);
+    let s = read(&mut env, &sr);
+    let id = unsafe {
         wxscan_ffi::wxscan_scanner_new(
             if d.is_empty() { std::ptr::null() } else { d.as_ptr() },
             d.len(),
@@ -39,18 +74,48 @@ pub extern "system" fn Java_com_wilinz_wxscanlive_core_NativeScanner_nativeCreat
             s.len(),
         )
     };
-    ptr as jlong
+    id as jlong
 }
 
-/// Destroy a scanner. A handle of 0 is ignored.
+/// Take a reference to a scanner the caller did not create, returning the same
+/// handle, or 0 if it names no scanner.
+///
+/// This is how a camera binding borrows the scanner a Dart application already
+/// holds: one scanner, one set of weights in memory, and it stays alive
+/// whichever side lets go of it first. Match it with
+/// [`Java_com_wilinz_wxscanlive_core_NativeScanner_nativeRelease`].
 #[no_mangle]
-pub extern "system" fn Java_com_wilinz_wxscanlive_core_NativeScanner_nativeDestroy(
+pub extern "system" fn Java_com_wilinz_wxscanlive_core_NativeScanner_nativeRetain(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jlong {
+    wxscan_ffi::wxscan_scanner_retain(handle_of(handle)) as jlong
+}
+
+/// Whether the scanner a handle names has its detector network loaded.
+///
+/// A borrowed scanner was built by whoever lent it, so this side cannot know
+/// from the weights it was passed — it was passed none. Rather than guess, it
+/// asks. Returns false for a handle that names no scanner.
+#[no_mangle]
+pub extern "system" fn Java_com_wilinz_wxscanlive_core_NativeScanner_nativeHasDetector(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jboolean {
+    u8::from(wxscan_ffi::wxscan_scanner_has_detector(handle_of(handle)) != 0)
+}
+
+/// Give up a reference. The scanner goes when its last holder does.
+#[no_mangle]
+pub extern "system" fn Java_com_wilinz_wxscanlive_core_NativeScanner_nativeRelease(
     _env: JNIEnv,
     _class: JClass,
     handle: jlong,
 ) {
     if handle != 0 {
-        unsafe { wxscan_ffi::wxscan_scanner_free(handle as *mut WxScanScanner) };
+        wxscan_ffi::wxscan_scanner_release(handle_of(handle));
     }
 }
 
@@ -65,7 +130,7 @@ pub extern "system" fn Java_com_wilinz_wxscanlive_core_NativeScanner_nativeDestr
 /// document rather than an exception.
 #[no_mangle]
 pub extern "system" fn Java_com_wilinz_wxscanlive_core_NativeScanner_nativeScanFrame(
-    env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
     y_plane: JByteArray,
@@ -76,18 +141,24 @@ pub extern "system" fn Java_com_wilinz_wxscanlive_core_NativeScanner_nativeScanF
     mirror: jboolean,
 ) -> jstring {
     let json = match env.convert_byte_array(&y_plane) {
-        Ok(bytes) => unsafe {
-            scan_json(
-                handle as *const WxScanScanner,
-                &bytes,
-                width,
-                height,
-                row_stride,
-                rotation,
-                mirror != 0,
-            )
-        },
-        Err(_) => empty_json(),
+        Ok(bytes) => scan_json(
+            handle_of(handle),
+            &bytes,
+            width,
+            height,
+            row_stride,
+            rotation,
+            mirror != 0,
+        ),
+        Err(_) => {
+            // The copy failed, which for jni-rs means a Java exception is
+            // pending — an OutOfMemoryError, most likely. Calling any further
+            // JNI function with one pending is undefined behaviour, and
+            // Android's CheckJNI aborts the process for it. `new_string`
+            // below is exactly such a call.
+            clear_pending(&mut env);
+            empty_json()
+        }
     };
     env.new_string(json)
         .map(|s| s.into_raw())
@@ -118,10 +189,10 @@ pub extern "system" fn Java_com_wilinz_wxscanlive_core_NativeScanner_nativePing(
 /// A non-empty `candidates` with an empty `results` means a symbol was located
 /// but not decoded, which the caller can use to zoom in.
 ///
-/// # Safety
-/// `handle` must be a live scanner from `nativeCreate`.
-unsafe fn scan_json(
-    handle: *const WxScanScanner,
+/// A handle that names no scanner yields the empty document, as does a frame
+/// whose dimensions do not match its buffer.
+fn scan_json(
+    handle: WxScanScannerId,
     bytes: &[u8],
     width: jint,
     height: jint,
@@ -129,16 +200,28 @@ unsafe fn scan_json(
     rotation: jint,
     mirror: bool,
 ) -> String {
-    if handle.is_null() || width <= 0 || height <= 0 || row_stride < width {
+    if width <= 0 || height <= 0 || row_stride < width {
         return empty_json();
     }
+    // A handle that names nothing — released, or never valid — is an empty
+    // document, not a dereference.
+    let Some(scanner) = wxscan_ffi::lookup_scanner(handle) else {
+        return empty_json();
+    };
     let (w, h, stride) = (width as usize, height as usize, row_stride as usize);
-    if bytes.len() < stride * h {
+    // Checked, because `usize` is 32 bits on armeabi-v7a: `stride * h` for a
+    // frame claiming 65536 rows of 65536 bytes wraps to zero there, the length
+    // check passes, and `upright_gray` reads past the end of a short array.
+    // This is the only bounds check standing between Java and that slice.
+    let Some(needed) = stride.checked_mul(h) else {
+        return empty_json();
+    };
+    if bytes.len() < needed {
         return empty_json();
     }
 
     let (gray, ow, oh) = upright_gray(bytes, w, h, stride, rotation);
-    let (results, candidates) = (*handle).scan_upright(&gray, ow, oh);
+    let (results, candidates) = scanner.scan_upright(&gray, ow, oh);
 
     let flip = |x: f32| if mirror { ow as f32 - x } else { x };
     let quad = |pts: &[(f32, f32); 4]| {

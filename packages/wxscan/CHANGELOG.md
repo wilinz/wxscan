@@ -27,5 +27,8 @@ First release.
   decoding a PNG or a JPEG does not convert pixels in Dart.
 - Detection is configurable: `confidenceThreshold`, `nmsThreshold` and
   `scaleFactor` read and write without contending for the scanner's lock.
+- A scanner can be lent to `wxscan_live`, so an application that scans both
+  live and from the photo library holds one scanner and one copy of the
+  weights. The two sides may be disposed in either order.
 - Mismatched dimensions raise `ArgumentError` instead of returning an empty
   result that looks like a frame with nothing in it.

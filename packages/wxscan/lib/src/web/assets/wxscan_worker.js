@@ -141,7 +141,7 @@ self.onmessage = async (event) => {
     else if (cmd === 'scanGray' || cmd === 'scanPixels' || cmd === 'scanFrame')
       result = scan(cmd, event.data);
     else if (cmd === 'dispose') {
-      if (scanner) wx.wxscan_scanner_free(scanner);
+      if (scanner) wx.wxscan_scanner_release(scanner);
       scanner = 0;
       result = {};
     } else throw new Error(`unknown command ${cmd}`);

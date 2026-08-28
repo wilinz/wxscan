@@ -318,7 +318,7 @@ pub(crate) fn decoder() -> WxScanImageDecoder {
 #[cfg(test)]
 mod tests {
     use wxscan_ffi::{
-        wxscan_results_free, wxscan_scan_bytes, wxscan_scanner_free, wxscan_scanner_new,
+        wxscan_results_free, wxscan_scan_bytes, wxscan_scanner_release, wxscan_scanner_new,
         WxScanStatus,
     };
 
@@ -341,7 +341,7 @@ mod tests {
 
         unsafe {
             let scanner = wxscan_scanner_new(std::ptr::null(), 0, std::ptr::null(), 0);
-            assert!(!scanner.is_null());
+            assert_ne!(scanner, 0);
 
             // Before: not a picture this build knows, which is where every
             // earlier version stood.
@@ -363,7 +363,7 @@ mod tests {
             assert_eq!((*out).results_len, 1, "the symbol survived the round trip");
 
             wxscan_results_free(out);
-            wxscan_scanner_free(scanner);
+            wxscan_scanner_release(scanner);
         }
     }
 }

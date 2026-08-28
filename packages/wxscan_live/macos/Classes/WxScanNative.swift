@@ -9,14 +9,21 @@ import Foundation
 /// building and shipping a second one.
 ///
 /// The types still come from `wxscan.h`; only the functions are resolved here.
+///
+/// A scanner is an `Int` here rather than a pointer because that is what it is:
+/// `WxScanScannerId` is a handle the library looks up in a table of its own, so
+/// one that has been released is refused rather than followed. That is what
+/// makes it safe for this plugin to be handed a scanner Dart created.
 enum WxScanNative {
     typealias ScannerNew = @convention(c) (
         UnsafePointer<UInt8>?, Int, UnsafePointer<UInt8>?, Int
-    ) -> OpaquePointer?
-    typealias ScannerFree = @convention(c) (OpaquePointer?) -> Void
-    typealias SetScaleFactor = @convention(c) (OpaquePointer?, Float) -> Void
+    ) -> Int
+    typealias ScannerRetain = @convention(c) (Int) -> Int
+    typealias ScannerRelease = @convention(c) (Int) -> Void
+    typealias HasDetector = @convention(c) (Int) -> Int32
+    typealias SetScaleFactor = @convention(c) (Int, Float) -> Void
     typealias ScanFrame = @convention(c) (
-        OpaquePointer?, UnsafePointer<UInt8>?, Int32, Int32, Int32, Int32, Int32
+        Int, UnsafePointer<UInt8>?, Int32, Int32, Int32, Int32, Int32
     ) -> UnsafeMutablePointer<WxScanResults>?
     typealias ResultsFree = @convention(c) (UnsafeMutablePointer<WxScanResults>?) -> Void
     typealias Ping = @convention(c) () -> Int32
@@ -26,7 +33,9 @@ enum WxScanNative {
     static var isAvailable: Bool { handle != nil }
 
     static let scannerNew: ScannerNew? = symbol("wxscan_scanner_new")
-    static let scannerFree: ScannerFree? = symbol("wxscan_scanner_free")
+    static let scannerRetain: ScannerRetain? = symbol("wxscan_scanner_retain")
+    static let scannerRelease: ScannerRelease? = symbol("wxscan_scanner_release")
+    static let hasDetector: HasDetector? = symbol("wxscan_scanner_has_detector")
     static let setScaleFactor: SetScaleFactor? = symbol("wxscan_scanner_set_scale_factor")
     static let scanFrame: ScanFrame? = symbol("wxscan_scan_frame")
     static let resultsFree: ResultsFree? = symbol("wxscan_results_free")

@@ -141,7 +141,7 @@ pub(crate) fn decoder() -> WxScanImageDecoder {
 #[cfg(test)]
 mod tests {
     use wxscan_ffi::{
-        wxscan_results_free, wxscan_scan_bytes, wxscan_scanner_free, wxscan_scanner_new,
+        wxscan_results_free, wxscan_scan_bytes, wxscan_scanner_release, wxscan_scanner_new,
         wxscan_set_image_decoder, WxScanStatus,
     };
 
@@ -168,7 +168,7 @@ mod tests {
             wxscan_set_image_decoder(&decoder);
 
             let scanner = wxscan_scanner_new(std::ptr::null(), 0, std::ptr::null(), 0);
-            assert!(!scanner.is_null());
+            assert_ne!(scanner, 0);
             let data = fixture("rot90.heic");
             let mut status = WxScanStatus::BadArgument;
             let out = wxscan_scan_bytes(scanner, data.as_ptr(), data.len(), &mut status);
@@ -183,7 +183,7 @@ mod tests {
             assert_eq!((*out).results_len, 1, "the symbol survived the decode");
 
             wxscan_results_free(out);
-            wxscan_scanner_free(scanner);
+            wxscan_scanner_release(scanner);
             wxscan_set_image_decoder(std::ptr::null());
         }
     }

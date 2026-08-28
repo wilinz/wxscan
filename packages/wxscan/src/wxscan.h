@@ -58,15 +58,6 @@ typedef int32_t WxScanStatus;
 #endif // __cplusplus
 
 /**
- * A scanner instance. Opaque to the C side.
- *
- * Scanning takes `&self`, but the underlying algorithm keeps mutable state
- * (decoder rotation, connected-component caches), so one instance scans one
- * frame at a time. Create several instances to scan in parallel.
- */
-typedef struct WxScanScanner WxScanScanner;
-
-/**
  * One decoded symbol.
  */
 typedef struct WxScanResult {
@@ -115,6 +106,70 @@ typedef struct WxScanResults {
   uint32_t height;
 } WxScanResults;
 
+/**
+ * A scanner handle.
+ *
+ * **Not a pointer.** It is a number this library hands out and looks up in a
+ * table of its own, and that is the whole point: a handle that has been
+ * released, or was never valid, or was invented by a caller, resolves to
+ * nothing and comes back as an ordinary failure. Were it an address, each of
+ * those would instead be a read of freed or arbitrary memory, crashing
+ * somewhere with no trace of where the mistake was made.
+ *
+ * This matters because a scanner is routinely held by two sides at once that
+ * cannot see each other's lifetimes: a managed application holding one for
+ * still pictures while a camera binding, in another language, decodes frames
+ * with the same handle. Reference counting alone ([`wxscan_scanner_retain`])
+ * settles who frees it, but only a handle that is not an address makes a
+ * stale one safe to present — and after a hot restart of the managed side,
+ * stale handles are exactly what turns up.
+ *
+ * Zero is never a scanner. It means "none", and is what a failed
+ * [`wxscan_scanner_new`] returns.
+ *
+ * Handles are never reused. A released number stays dead for the life of the
+ * process, so a stale one can never come to name a different scanner — which
+ * would put every one of the above problems back, silently.
+ */
+typedef size_t WxScanScannerId;
+
+/**
+ * A decoder the host lends to this library.
+ *
+ * Both function pointers are required; a struct with either missing is
+ * rejected rather than half-installed.
+ */
+typedef struct WxScanImageDecoder {
+  /**
+   * Decode `data`, which is an encoded image file.
+   *
+   * Returns 1 on success, having written a pixel buffer and its shape
+   * through the out parameters, and 0 for anything it does not recognise —
+   * which is not an error, only an answer.
+   *
+   * `out_format` is a [`WxScanPixelFormat`]. Rows must be tightly packed.
+   * The orientation recorded in the file is the host's to apply, since the
+   * system decoders do it as a matter of course and this library cannot
+   * tell whether it happened.
+   */
+  int32_t (*decode)(const uint8_t *data,
+                    size_t len,
+                    const uint8_t **out_pixels,
+                    uint32_t *out_width,
+                    uint32_t *out_height,
+                    int32_t *out_format,
+                    void *ctx);
+  /**
+   * Release a buffer a successful `decode` handed over. Called exactly once
+   * per success, before the scan returns.
+   */
+  void (*release)(const uint8_t *pixels, void *ctx);
+  /**
+   * Passed back to both functions untouched.
+   */
+  void *ctx;
+} WxScanImageDecoder;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -127,11 +182,10 @@ extern "C" {
  * [`crate::results::wxscan_results_free`].
  *
  * # Safety
- * `scanner` must come from [`crate::scanner::wxscan_scanner_new`] and `data`
- * must point to at least `width * height` readable bytes that stay valid for
- * the duration of the call.
+ * `data` must point to at least `width * height` readable bytes that stay
+ * valid for the duration of the call.
  */
-struct WxScanResults *wxscan_scan_gray(const struct WxScanScanner *scanner,
+struct WxScanResults *wxscan_scan_gray(WxScanScannerId scanner,
                                        const uint8_t *data,
                                        int32_t width,
                                        int32_t height);
@@ -151,11 +205,10 @@ struct WxScanResults *wxscan_scan_gray(const struct WxScanScanner *scanner,
  * [`crate::results::wxscan_results_free`].
  *
  * # Safety
- * `scanner` must come from [`crate::scanner::wxscan_scanner_new`] and `data`
- * must point to at least that many readable bytes, valid for the duration of
- * the call.
+ * `data` must point to at least that many readable bytes, valid for the
+ * duration of the call.
  */
-struct WxScanResults *wxscan_scan_pixels(const struct WxScanScanner *scanner,
+struct WxScanResults *wxscan_scan_pixels(WxScanScannerId scanner,
                                          const uint8_t *data,
                                          int32_t width,
                                          int32_t height,
@@ -178,11 +231,10 @@ struct WxScanResults *wxscan_scan_pixels(const struct WxScanScanner *scanner,
  * [`crate::results::wxscan_results_free`].
  *
  * # Safety
- * `scanner` must come from [`crate::scanner::wxscan_scanner_new`] and `data`
- * must point to at least `row_stride * height` readable bytes that stay valid
- * for the duration of the call.
+ * `data` must point to at least `row_stride * height` readable bytes that
+ * stay valid for the duration of the call.
  */
-struct WxScanResults *wxscan_scan_frame(const struct WxScanScanner *scanner,
+struct WxScanResults *wxscan_scan_frame(WxScanScannerId scanner,
                                         const uint8_t *data,
                                         int32_t width,
                                         int32_t height,
@@ -208,11 +260,10 @@ struct WxScanResults *wxscan_scan_frame(const struct WxScanScanner *scanner,
  * in the picture as it is meant to be seen.
  *
  * # Safety
- * `scanner` must come from [`crate::scanner::wxscan_scanner_new`], `path` must
- * be a NUL terminated string, and `status`, when not NULL, must point to a
+ * `path` must be a NUL terminated string, and `status`, when not NULL, must point to a
  * writable [`WxScanStatus`].
  */
-struct WxScanResults *wxscan_scan_path(const struct WxScanScanner *scanner,
+struct WxScanResults *wxscan_scan_path(WxScanScannerId scanner,
                                        const char *path,
                                        WxScanStatus *status);
 
@@ -238,12 +289,11 @@ struct WxScanResults *wxscan_scan_path(const struct WxScanScanner *scanner,
  * The orientation recorded in the file is applied, exactly as for a path.
  *
  * # Safety
- * `scanner` must come from [`crate::scanner::wxscan_scanner_new`], `data`
- * must point to at least `len` readable bytes that stay valid for the
+ * `data` must point to at least `len` readable bytes that stay valid for the
  * duration of the call, and `status`, when not NULL, must point to a writable
  * [`WxScanStatus`].
  */
-struct WxScanResults *wxscan_scan_bytes(const struct WxScanScanner *scanner,
+struct WxScanResults *wxscan_scan_bytes(WxScanScannerId scanner,
                                         const uint8_t *data,
                                         size_t len,
                                         WxScanStatus *status);
@@ -252,6 +302,39 @@ struct WxScanResults *wxscan_scan_bytes(const struct WxScanScanner *scanner,
  * Link probe: returns 1 when the library is linked in correctly.
  */
 int32_t wxscan_ping(void);
+
+/**
+ * Lend this library a decoder for formats it does not carry, or pass NULL to
+ * take one back.
+ *
+ * It is consulted only after the built-in decoders have declined, so it
+ * cannot change how a png, jpeg or gif is read. A caller that registers
+ * nothing keeps exactly the previous behaviour: unknown bytes come back as
+ * `WxScanStatus::UnsupportedFormat`.
+ *
+ * Register once at start-up. The functions may be called from any thread the
+ * caller scans on, and from more than one at a time, so they must be safe to
+ * call that way — the system decoders named in this module's documentation
+ * all are.
+ *
+ * # Safety
+ * `decoder`, when not NULL, must point to a readable [`WxScanImageDecoder`]
+ * whose function pointers, and the `ctx` beside them, stay valid **for the
+ * life of the process** — not merely until they are replaced or cleared.
+ *
+ * Replacing or clearing a registration does not wait for decodes already
+ * under way. A decode that has read the slot but not yet called through it
+ * will still call the retired pointers with the retired `ctx`, so a host that
+ * frees that context, drops a reference the context holds, or unloads the
+ * code behind those pointers once this returns has a use-after-free. There is
+ * nowhere to put a wait: the alternative is holding the registration lock
+ * across the decode, which would serialise every picture in the process
+ * behind every other.
+ *
+ * Registering once at start-up and leaving it, which is what a decoder built
+ * into an application does, sidesteps this entirely.
+ */
+void wxscan_set_image_decoder(const struct WxScanImageDecoder *decoder);
 
 /**
  * Free a result set and everything it owns. Passing NULL is a no-op.
@@ -269,44 +352,65 @@ void wxscan_results_free(struct WxScanResults *r);
  * still decodes, but the detection rate for small or distant symbols is
  * considerably lower, since that is what the CNN stage contributes.
  *
- * Returns NULL if a model fails to load. Release with [`wxscan_scanner_free`].
+ * Returns zero if a model fails to load. Release with
+ * [`wxscan_scanner_release`].
  *
  * # Safety
  * `detect` and `sr`, when not NULL, must point to at least the corresponding
  * number of readable bytes.
  */
-struct WxScanScanner *wxscan_scanner_new(const uint8_t *detect,
-                                         size_t detect_len,
-                                         const uint8_t *sr,
-                                         size_t sr_len);
+WxScanScannerId wxscan_scanner_new(const uint8_t *detect,
+                                   size_t detect_len,
+                                   const uint8_t *sr,
+                                   size_t sr_len);
 
 /**
  * Set the downscale factor applied before detection.
  *
  * Values outside `(0, 1]` restore the default, which targets a 400x400 area.
- *
- * # Safety
- * `s` must come from [`wxscan_scanner_new`].
  */
-void wxscan_scanner_set_scale_factor(struct WxScanScanner *s, float v);
+void wxscan_scanner_set_scale_factor(WxScanScannerId s, float v);
 
 /**
- * Destroy a scanner. Passing NULL is a no-op.
+ * How many scanners are alive in this process.
  *
- * # Safety
- * The pointer must come from [`wxscan_scanner_new`] and must be freed at most once.
+ * For finding a holder that never gave its handle back. A scanner that is
+ * leaked rather than released costs whatever its weights cost for the life of
+ * the process, and without this there is no way to see that from outside —
+ * which is the usual reason such a leak survives for months.
+ *
+ * A test can assert this is back where it started; a debug build of an
+ * application can watch it across a screen that opens and closes.
  */
-void wxscan_scanner_free(struct WxScanScanner *s);
+size_t wxscan_scanner_count(void);
+
+/**
+ * Take a reference to a scanner, returning the same handle for convenience.
+ *
+ * For a second holder — typically a camera binding handed a scanner the
+ * application already owns. It keeps the scanner alive whichever side lets go
+ * first. Returns zero, and takes nothing, if the handle names no scanner.
+ *
+ * Every retain must be matched by a [`wxscan_scanner_release`].
+ */
+WxScanScannerId wxscan_scanner_retain(WxScanScannerId s);
+
+/**
+ * Give up a reference. The scanner is freed when the last holder goes.
+ *
+ * Releasing a handle that names no scanner — one already released, or never
+ * valid — does nothing. It is a bug on the caller's side, and a debug build
+ * says so, but it is not one this library can do anything about at that point
+ * and it is certainly not a reason to corrupt anything.
+ */
+void wxscan_scanner_release(WxScanScannerId s);
 
 /**
  * The downscale factor applied before detection, as set by
  * [`wxscan_scanner_set_scale_factor`]. A negative value means the default,
- * which targets a 400x400 area.
- *
- * # Safety
- * `s` must come from [`wxscan_scanner_new`].
+ * which targets a 400x400 area — or that `s` names no scanner.
  */
-float wxscan_scanner_scale_factor(const struct WxScanScanner *s);
+float wxscan_scanner_scale_factor(WxScanScannerId s);
 
 /**
  * How confident the detector must be to report a candidate, 0.2 by default.
@@ -314,53 +418,39 @@ float wxscan_scanner_scale_factor(const struct WxScanScanner *s);
  * Lower recalls more weak symbols along with more false positives; higher does
  * the reverse. Values outside `(0, 1)` are ignored. Without models there is no
  * detector and this does nothing.
- *
- * # Safety
- * `s` must come from [`wxscan_scanner_new`].
  */
-void wxscan_scanner_set_confidence_threshold(struct WxScanScanner *s, float v);
+void wxscan_scanner_set_confidence_threshold(WxScanScannerId s, float v);
 
 /**
  * The confidence threshold in use, or a negative value when no detector is
- * loaded.
- *
- * # Safety
- * `s` must come from [`wxscan_scanner_new`].
+ * loaded — or when `s` names no scanner, which is not distinguished here.
  */
-float wxscan_scanner_confidence_threshold(const struct WxScanScanner *s);
+float wxscan_scanner_confidence_threshold(WxScanScannerId s);
 
 /**
  * The IoU above which two overlapping candidates are treated as one symbol,
  * 0.45 by default. Values outside `(0, 1)` are ignored.
- *
- * # Safety
- * `s` must come from [`wxscan_scanner_new`].
  */
-void wxscan_scanner_set_nms_threshold(struct WxScanScanner *s, float v);
+void wxscan_scanner_set_nms_threshold(WxScanScannerId s, float v);
 
 /**
- * The NMS threshold in use, or a negative value when no detector is loaded.
- *
- * # Safety
- * `s` must come from [`wxscan_scanner_new`].
+ * The NMS threshold in use, or a negative value when no detector is loaded —
+ * or when `s` names no scanner, which is not distinguished here.
  */
-float wxscan_scanner_nms_threshold(const struct WxScanScanner *s);
+float wxscan_scanner_nms_threshold(WxScanScannerId s);
 
 /**
- * Whether the detector network is loaded.
- *
- * # Safety
- * `s` must come from [`wxscan_scanner_new`].
+ * Whether the detector network is loaded. False also for a handle that names
+ * no scanner: ask right after taking a reference, when the two cannot be
+ * confused.
  */
-int32_t wxscan_scanner_has_detector(const struct WxScanScanner *s);
+int32_t wxscan_scanner_has_detector(WxScanScannerId s);
 
 /**
- * Whether the super resolution network is loaded.
- *
- * # Safety
- * `s` must come from [`wxscan_scanner_new`].
+ * Whether the super resolution network is loaded. False also for a handle
+ * that names no scanner, as for the detector.
  */
-int32_t wxscan_scanner_has_super_resolution(const struct WxScanScanner *s);
+int32_t wxscan_scanner_has_super_resolution(WxScanScannerId s);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -15,7 +15,10 @@
 /// since that directory is published as it stands.
 library;
 
+import 'dart:async';
 import 'dart:typed_data';
+
+import 'package:meta/meta.dart';
 
 import '../result.dart';
 import 'decode.dart';
@@ -102,10 +105,24 @@ Future<WxScanWorker> startWxScanWorker({
 
 /// A scanner backed by the WebAssembly build, running in a worker.
 class WxScanner {
-  WxScanner._(this._worker);
+  WxScanner._(this._worker) {
+    _live.add(this);
+  }
 
   final WxScanWorker _worker;
   var _disposed = false;
+
+  /// Every scanner that has not been disposed.
+  ///
+  /// Kept here rather than asked of the library: a browser scanner is a worker
+  /// reached by message, and there is no table on this side of that message to
+  /// ask. Counting the objects answers the same question — how many are alive
+  /// — which is what this is for.
+  ///
+  /// Strong references on purpose. There is no collector hook that would stop
+  /// a worker, so a scanner nobody disposes keeps its worker either way, and a
+  /// count that quietly forgot about it would be the wrong answer.
+  static final _live = <WxScanner>{};
 
   /// Whether the CNN detector is available.
   bool get hasDetector => _worker.hasDetector;
@@ -115,6 +132,54 @@ class WxScanner {
 
   /// Whether either CNN stage is available.
   bool get hasModels => hasDetector || hasSuperResolution;
+
+  /// How many scanners are alive on this page, this one included.
+  ///
+  /// For finding one that was never disposed. A test can assert it is back to
+  /// zero at the end; a screen that opens and closes can be watched across a
+  /// few passes to see whether it climbs.
+  ///
+  /// This is a diagnostic. Nothing about how an application scans should depend
+  /// on it.
+  ///
+  /// It matters more here than it does natively: a browser has no finalizer
+  /// standing behind a scanner nobody disposed. Its worker, and the two
+  /// WebAssembly modules in it, stay for the life of the page.
+  static int get liveCount => _live.length;
+
+  /// Runs [body] with a scanner, and disposes it however that ends.
+  ///
+  /// For work with a beginning and an end — a picture the user just picked, a
+  /// batch of files — where a scanner that outlives it is only a way to forget
+  /// to dispose it:
+  ///
+  /// ```dart
+  /// final outcome = await WxScanner.use(
+  ///   (scanner) => scanner.scanImage(bytes),
+  ///   detectModel: detect,
+  ///   srModel: sr,
+  /// );
+  /// ```
+  ///
+  /// Do not use it for a screen that scans continuously: creating a scanner
+  /// starts a worker and fetches two WebAssembly modules, which is far too much
+  /// to pay per frame. Hold one for as long as the screen lives and [dispose]
+  /// it there.
+  ///
+  /// The scanner is gone by the time this returns, so nothing [body] hands back
+  /// may reference it. Results do not: they are plain values.
+  static Future<R> use<R>(
+    FutureOr<R> Function(WxScanner scanner) body, {
+    Uint8List? detectModel,
+    Uint8List? srModel,
+  }) async {
+    final scanner = await create(detectModel: detectModel, srModel: srModel);
+    try {
+      return await body(scanner);
+    } finally {
+      await scanner.dispose();
+    }
+  }
 
   /// Creates a scanner, starting the worker that runs it.
   ///
@@ -228,6 +293,18 @@ class WxScanner {
   /// is the scanner. See [scanImage].
   ScanOutcome scanImageSync(Uint8List data) => _noSync('scanImageSync');
 
+  /// Zero in a browser: there is no native scanner to point at.
+  ///
+  /// Natively this is how the camera plugin scans against the application's own
+  /// scanner instead of building a second one. Here the scanner is a worker,
+  /// and the camera reaches it by message rather than by pointer, so there is
+  /// nothing to hand over — and nothing is duplicated either way.
+  @internal
+  int get nativeHandle {
+    _checkAlive();
+    return 0;
+  }
+
   static Never _noSync(String name) => throw UnsupportedError(
         'wxscan: $name is not available in a browser. The scanner runs in '
         'a worker, so results arrive as a message; use the asynchronous '
@@ -262,6 +339,7 @@ class WxScanner {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    _live.remove(this);
     await _worker.dispose();
   }
 }

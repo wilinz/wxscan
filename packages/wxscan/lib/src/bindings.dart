@@ -16,19 +16,18 @@ import 'dart:ffi' as ffi;
 /// [`crate::results::wxscan_results_free`].
 ///
 /// # Safety
-/// `scanner` must come from [`crate::scanner::wxscan_scanner_new`] and `data`
-/// must point to at least `width * height` readable bytes that stay valid for
-/// the duration of the call.
+/// `data` must point to at least `width * height` readable bytes that stay
+/// valid for the duration of the call.
 @ffi.Native<
   ffi.Pointer<WxScanResults> Function(
-    ffi.Pointer<WxScanScanner>,
+    WxScanScannerId,
     ffi.Pointer<ffi.Uint8>,
     ffi.Int32,
     ffi.Int32,
   )
 >()
 external ffi.Pointer<WxScanResults> wxscan_scan_gray(
-  ffi.Pointer<WxScanScanner> scanner,
+  int scanner,
   ffi.Pointer<ffi.Uint8> data,
   int width,
   int height,
@@ -48,12 +47,11 @@ external ffi.Pointer<WxScanResults> wxscan_scan_gray(
 /// [`crate::results::wxscan_results_free`].
 ///
 /// # Safety
-/// `scanner` must come from [`crate::scanner::wxscan_scanner_new`] and `data`
-/// must point to at least that many readable bytes, valid for the duration of
-/// the call.
+/// `data` must point to at least that many readable bytes, valid for the
+/// duration of the call.
 @ffi.Native<
   ffi.Pointer<WxScanResults> Function(
-    ffi.Pointer<WxScanScanner>,
+    WxScanScannerId,
     ffi.Pointer<ffi.Uint8>,
     ffi.Int32,
     ffi.Int32,
@@ -61,7 +59,7 @@ external ffi.Pointer<WxScanResults> wxscan_scan_gray(
   )
 >()
 external ffi.Pointer<WxScanResults> wxscan_scan_pixels(
-  ffi.Pointer<WxScanScanner> scanner,
+  int scanner,
   ffi.Pointer<ffi.Uint8> data,
   int width,
   int height,
@@ -84,12 +82,11 @@ external ffi.Pointer<WxScanResults> wxscan_scan_pixels(
 /// [`crate::results::wxscan_results_free`].
 ///
 /// # Safety
-/// `scanner` must come from [`crate::scanner::wxscan_scanner_new`] and `data`
-/// must point to at least `row_stride * height` readable bytes that stay valid
-/// for the duration of the call.
+/// `data` must point to at least `row_stride * height` readable bytes that
+/// stay valid for the duration of the call.
 @ffi.Native<
   ffi.Pointer<WxScanResults> Function(
-    ffi.Pointer<WxScanScanner>,
+    WxScanScannerId,
     ffi.Pointer<ffi.Uint8>,
     ffi.Int32,
     ffi.Int32,
@@ -99,7 +96,7 @@ external ffi.Pointer<WxScanResults> wxscan_scan_pixels(
   )
 >()
 external ffi.Pointer<WxScanResults> wxscan_scan_frame(
-  ffi.Pointer<WxScanScanner> scanner,
+  int scanner,
   ffi.Pointer<ffi.Uint8> data,
   int width,
   int height,
@@ -125,18 +122,17 @@ external ffi.Pointer<WxScanResults> wxscan_scan_frame(
 /// in the picture as it is meant to be seen.
 ///
 /// # Safety
-/// `scanner` must come from [`crate::scanner::wxscan_scanner_new`], `path` must
-/// be a NUL terminated string, and `status`, when not NULL, must point to a
+/// `path` must be a NUL terminated string, and `status`, when not NULL, must point to a
 /// writable [`WxScanStatus`].
 @ffi.Native<
   ffi.Pointer<WxScanResults> Function(
-    ffi.Pointer<WxScanScanner>,
+    WxScanScannerId,
     ffi.Pointer<ffi.Char>,
     ffi.Pointer<ffi.Int32>,
   )
 >()
 external ffi.Pointer<WxScanResults> wxscan_scan_path(
-  ffi.Pointer<WxScanScanner> scanner,
+  int scanner,
   ffi.Pointer<ffi.Char> path,
   ffi.Pointer<ffi.Int32> status,
 );
@@ -162,20 +158,19 @@ external ffi.Pointer<WxScanResults> wxscan_scan_path(
 /// The orientation recorded in the file is applied, exactly as for a path.
 ///
 /// # Safety
-/// `scanner` must come from [`crate::scanner::wxscan_scanner_new`], `data`
-/// must point to at least `len` readable bytes that stay valid for the
+/// `data` must point to at least `len` readable bytes that stay valid for the
 /// duration of the call, and `status`, when not NULL, must point to a writable
 /// [`WxScanStatus`].
 @ffi.Native<
   ffi.Pointer<WxScanResults> Function(
-    ffi.Pointer<WxScanScanner>,
+    WxScanScannerId,
     ffi.Pointer<ffi.Uint8>,
     ffi.Size,
     ffi.Pointer<ffi.Int32>,
   )
 >()
 external ffi.Pointer<WxScanResults> wxscan_scan_bytes(
-  ffi.Pointer<WxScanScanner> scanner,
+  int scanner,
   ffi.Pointer<ffi.Uint8> data,
   int len,
   ffi.Pointer<ffi.Int32> status,
@@ -184,6 +179,38 @@ external ffi.Pointer<WxScanResults> wxscan_scan_bytes(
 /// Link probe: returns 1 when the library is linked in correctly.
 @ffi.Native<ffi.Int32 Function()>()
 external int wxscan_ping();
+
+/// Lend this library a decoder for formats it does not carry, or pass NULL to
+/// take one back.
+///
+/// It is consulted only after the built-in decoders have declined, so it
+/// cannot change how a png, jpeg or gif is read. A caller that registers
+/// nothing keeps exactly the previous behaviour: unknown bytes come back as
+/// `WxScanStatus::UnsupportedFormat`.
+///
+/// Register once at start-up. The functions may be called from any thread the
+/// caller scans on, and from more than one at a time, so they must be safe to
+/// call that way — the system decoders named in this module's documentation
+/// all are.
+///
+/// # Safety
+/// `decoder`, when not NULL, must point to a readable [`WxScanImageDecoder`]
+/// whose function pointers, and the `ctx` beside them, stay valid **for the
+/// life of the process** — not merely until they are replaced or cleared.
+///
+/// Replacing or clearing a registration does not wait for decodes already
+/// under way. A decode that has read the slot but not yet called through it
+/// will still call the retired pointers with the retired `ctx`, so a host that
+/// frees that context, drops a reference the context holds, or unloads the
+/// code behind those pointers once this returns has a use-after-free. There is
+/// nowhere to put a wait: the alternative is holding the registration lock
+/// across the decode, which would serialise every picture in the process
+/// behind every other.
+///
+/// Registering once at start-up and leaving it, which is what a decoder built
+/// into an application does, sidesteps this entirely.
+@ffi.Native<ffi.Void Function(ffi.Pointer<WxScanImageDecoder>)>()
+external void wxscan_set_image_decoder(ffi.Pointer<WxScanImageDecoder> decoder);
 
 /// Free a result set and everything it owns. Passing NULL is a no-op.
 ///
@@ -199,20 +226,21 @@ external void wxscan_results_free(ffi.Pointer<WxScanResults> r);
 /// still decodes, but the detection rate for small or distant symbols is
 /// considerably lower, since that is what the CNN stage contributes.
 ///
-/// Returns NULL if a model fails to load. Release with [`wxscan_scanner_free`].
+/// Returns zero if a model fails to load. Release with
+/// [`wxscan_scanner_release`].
 ///
 /// # Safety
 /// `detect` and `sr`, when not NULL, must point to at least the corresponding
 /// number of readable bytes.
 @ffi.Native<
-  ffi.Pointer<WxScanScanner> Function(
+  WxScanScannerId Function(
     ffi.Pointer<ffi.Uint8>,
     ffi.Size,
     ffi.Pointer<ffi.Uint8>,
     ffi.Size,
   )
 >()
-external ffi.Pointer<WxScanScanner> wxscan_scanner_new(
+external int wxscan_scanner_new(
   ffi.Pointer<ffi.Uint8> detect,
   int detect_len,
   ffi.Pointer<ffi.Uint8> sr,
@@ -222,86 +250,79 @@ external ffi.Pointer<WxScanScanner> wxscan_scanner_new(
 /// Set the downscale factor applied before detection.
 ///
 /// Values outside `(0, 1]` restore the default, which targets a 400x400 area.
-///
-/// # Safety
-/// `s` must come from [`wxscan_scanner_new`].
-@ffi.Native<ffi.Void Function(ffi.Pointer<WxScanScanner>, ffi.Float)>()
-external void wxscan_scanner_set_scale_factor(
-  ffi.Pointer<WxScanScanner> s,
-  double v,
-);
+@ffi.Native<ffi.Void Function(WxScanScannerId, ffi.Float)>()
+external void wxscan_scanner_set_scale_factor(int s, double v);
 
-/// Destroy a scanner. Passing NULL is a no-op.
+/// How many scanners are alive in this process.
 ///
-/// # Safety
-/// The pointer must come from [`wxscan_scanner_new`] and must be freed at most once.
-@ffi.Native<ffi.Void Function(ffi.Pointer<WxScanScanner>)>()
-external void wxscan_scanner_free(ffi.Pointer<WxScanScanner> s);
+/// For finding a holder that never gave its handle back. A scanner that is
+/// leaked rather than released costs whatever its weights cost for the life of
+/// the process, and without this there is no way to see that from outside —
+/// which is the usual reason such a leak survives for months.
+///
+/// A test can assert this is back where it started; a debug build of an
+/// application can watch it across a screen that opens and closes.
+@ffi.Native<ffi.Size Function()>()
+external int wxscan_scanner_count();
+
+/// Take a reference to a scanner, returning the same handle for convenience.
+///
+/// For a second holder — typically a camera binding handed a scanner the
+/// application already owns. It keeps the scanner alive whichever side lets go
+/// first. Returns zero, and takes nothing, if the handle names no scanner.
+///
+/// Every retain must be matched by a [`wxscan_scanner_release`].
+@ffi.Native<WxScanScannerId Function(WxScanScannerId)>()
+external int wxscan_scanner_retain(int s);
+
+/// Give up a reference. The scanner is freed when the last holder goes.
+///
+/// Releasing a handle that names no scanner — one already released, or never
+/// valid — does nothing. It is a bug on the caller's side, and a debug build
+/// says so, but it is not one this library can do anything about at that point
+/// and it is certainly not a reason to corrupt anything.
+@ffi.Native<ffi.Void Function(WxScanScannerId)>()
+external void wxscan_scanner_release(int s);
 
 /// The downscale factor applied before detection, as set by
 /// [`wxscan_scanner_set_scale_factor`]. A negative value means the default,
-/// which targets a 400x400 area.
-///
-/// # Safety
-/// `s` must come from [`wxscan_scanner_new`].
-@ffi.Native<ffi.Float Function(ffi.Pointer<WxScanScanner>)>()
-external double wxscan_scanner_scale_factor(ffi.Pointer<WxScanScanner> s);
+/// which targets a 400x400 area — or that `s` names no scanner.
+@ffi.Native<ffi.Float Function(WxScanScannerId)>()
+external double wxscan_scanner_scale_factor(int s);
 
 /// How confident the detector must be to report a candidate, 0.2 by default.
 ///
 /// Lower recalls more weak symbols along with more false positives; higher does
 /// the reverse. Values outside `(0, 1)` are ignored. Without models there is no
 /// detector and this does nothing.
-///
-/// # Safety
-/// `s` must come from [`wxscan_scanner_new`].
-@ffi.Native<ffi.Void Function(ffi.Pointer<WxScanScanner>, ffi.Float)>()
-external void wxscan_scanner_set_confidence_threshold(
-  ffi.Pointer<WxScanScanner> s,
-  double v,
-);
+@ffi.Native<ffi.Void Function(WxScanScannerId, ffi.Float)>()
+external void wxscan_scanner_set_confidence_threshold(int s, double v);
 
 /// The confidence threshold in use, or a negative value when no detector is
-/// loaded.
-///
-/// # Safety
-/// `s` must come from [`wxscan_scanner_new`].
-@ffi.Native<ffi.Float Function(ffi.Pointer<WxScanScanner>)>()
-external double wxscan_scanner_confidence_threshold(
-  ffi.Pointer<WxScanScanner> s,
-);
+/// loaded — or when `s` names no scanner, which is not distinguished here.
+@ffi.Native<ffi.Float Function(WxScanScannerId)>()
+external double wxscan_scanner_confidence_threshold(int s);
 
 /// The IoU above which two overlapping candidates are treated as one symbol,
 /// 0.45 by default. Values outside `(0, 1)` are ignored.
-///
-/// # Safety
-/// `s` must come from [`wxscan_scanner_new`].
-@ffi.Native<ffi.Void Function(ffi.Pointer<WxScanScanner>, ffi.Float)>()
-external void wxscan_scanner_set_nms_threshold(
-  ffi.Pointer<WxScanScanner> s,
-  double v,
-);
+@ffi.Native<ffi.Void Function(WxScanScannerId, ffi.Float)>()
+external void wxscan_scanner_set_nms_threshold(int s, double v);
 
-/// The NMS threshold in use, or a negative value when no detector is loaded.
-///
-/// # Safety
-/// `s` must come from [`wxscan_scanner_new`].
-@ffi.Native<ffi.Float Function(ffi.Pointer<WxScanScanner>)>()
-external double wxscan_scanner_nms_threshold(ffi.Pointer<WxScanScanner> s);
+/// The NMS threshold in use, or a negative value when no detector is loaded —
+/// or when `s` names no scanner, which is not distinguished here.
+@ffi.Native<ffi.Float Function(WxScanScannerId)>()
+external double wxscan_scanner_nms_threshold(int s);
 
-/// Whether the detector network is loaded.
-///
-/// # Safety
-/// `s` must come from [`wxscan_scanner_new`].
-@ffi.Native<ffi.Int32 Function(ffi.Pointer<WxScanScanner>)>()
-external int wxscan_scanner_has_detector(ffi.Pointer<WxScanScanner> s);
+/// Whether the detector network is loaded. False also for a handle that names
+/// no scanner: ask right after taking a reference, when the two cannot be
+/// confused.
+@ffi.Native<ffi.Int32 Function(WxScanScannerId)>()
+external int wxscan_scanner_has_detector(int s);
 
-/// Whether the super resolution network is loaded.
-///
-/// # Safety
-/// `s` must come from [`wxscan_scanner_new`].
-@ffi.Native<ffi.Int32 Function(ffi.Pointer<WxScanScanner>)>()
-external int wxscan_scanner_has_super_resolution(ffi.Pointer<WxScanScanner> s);
+/// Whether the super resolution network is loaded. False also for a handle
+/// that names no scanner, as for the detector.
+@ffi.Native<ffi.Int32 Function(WxScanScannerId)>()
+external int wxscan_scanner_has_super_resolution(int s);
 
 /// Why [`wxscan_scan_path`] returned nothing.
 ///
@@ -345,8 +366,6 @@ enum WxScanStatus {
     _ => throw ArgumentError('Unknown value for WxScanStatus: $value'),
   };
 }
-
-final class WxScanScanner extends ffi.Opaque {}
 
 /// One decoded symbol.
 final class WxScanResult extends ffi.Struct {
@@ -400,4 +419,76 @@ final class WxScanResults extends ffi.Struct {
 
   @ffi.Uint32()
   external int height;
+}
+
+/// A scanner handle.
+///
+/// **Not a pointer.** It is a number this library hands out and looks up in a
+/// table of its own, and that is the whole point: a handle that has been
+/// released, or was never valid, or was invented by a caller, resolves to
+/// nothing and comes back as an ordinary failure. Were it an address, each of
+/// those would instead be a read of freed or arbitrary memory, crashing
+/// somewhere with no trace of where the mistake was made.
+///
+/// This matters because a scanner is routinely held by two sides at once that
+/// cannot see each other's lifetimes: a managed application holding one for
+/// still pictures while a camera binding, in another language, decodes frames
+/// with the same handle. Reference counting alone ([`wxscan_scanner_retain`])
+/// settles who frees it, but only a handle that is not an address makes a
+/// stale one safe to present — and after a hot restart of the managed side,
+/// stale handles are exactly what turns up.
+///
+/// Zero is never a scanner. It means "none", and is what a failed
+/// [`wxscan_scanner_new`] returns.
+///
+/// Handles are never reused. A released number stays dead for the life of the
+/// process, so a stale one can never come to name a different scanner — which
+/// would put every one of the above problems back, silently.
+typedef WxScanScannerId = ffi.Size;
+typedef DartWxScanScannerId = int;
+
+/// A decoder the host lends to this library.
+///
+/// Both function pointers are required; a struct with either missing is
+/// rejected rather than half-installed.
+final class WxScanImageDecoder extends ffi.Struct {
+  /// Decode `data`, which is an encoded image file.
+  ///
+  /// Returns 1 on success, having written a pixel buffer and its shape
+  /// through the out parameters, and 0 for anything it does not recognise —
+  /// which is not an error, only an answer.
+  ///
+  /// `out_format` is a [`WxScanPixelFormat`]. Rows must be tightly packed.
+  /// The orientation recorded in the file is the host's to apply, since the
+  /// system decoders do it as a matter of course and this library cannot
+  /// tell whether it happened.
+  external ffi.Pointer<
+    ffi.NativeFunction<
+      ffi.Int32 Function(
+        ffi.Pointer<ffi.Uint8> data,
+        ffi.Size len,
+        ffi.Pointer<ffi.Pointer<ffi.Uint8>> out_pixels,
+        ffi.Pointer<ffi.Uint32> out_width,
+        ffi.Pointer<ffi.Uint32> out_height,
+        ffi.Pointer<ffi.Int32> out_format,
+        ffi.Pointer<ffi.Void> ctx,
+      )
+    >
+  >
+  decode;
+
+  /// Release a buffer a successful `decode` handed over. Called exactly once
+  /// per success, before the scan returns.
+  external ffi.Pointer<
+    ffi.NativeFunction<
+      ffi.Void Function(
+        ffi.Pointer<ffi.Uint8> pixels,
+        ffi.Pointer<ffi.Void> ctx,
+      )
+    >
+  >
+  release;
+
+  /// Passed back to both functions untouched.
+  external ffi.Pointer<ffi.Void> ctx;
 }

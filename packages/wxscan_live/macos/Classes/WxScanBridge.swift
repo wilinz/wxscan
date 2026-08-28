@@ -12,15 +12,15 @@ import Foundation
 enum WxScanBridge {
     /// Creates a scanner from model bytes. Passing nil for both selects the
     /// mode without models, which still decodes but detects small or distant
-    /// symbols less reliably. Returns nil if a model fails to load.
-    static func create(detect: Data?, sr: Data?) -> OpaquePointer? {
+    /// symbols less reliably. Returns 0 if a model fails to load.
+    static func create(detect: Data?, sr: Data?) -> Int {
         func withBytes<T>(_ data: Data?, _ body: (UnsafePointer<UInt8>?, Int) -> T) -> T {
             guard let data, !data.isEmpty else { return body(nil, 0) }
             return data.withUnsafeBytes { raw in
                 body(raw.bindMemory(to: UInt8.self).baseAddress, data.count)
             }
         }
-        guard let scannerNew = WxScanNative.scannerNew else { return nil }
+        guard let scannerNew = WxScanNative.scannerNew else { return 0 }
         return withBytes(detect) { d, dn in
             withBytes(sr) { s, sn in
                 scannerNew(d, dn, s, sn)
@@ -28,10 +28,30 @@ enum WxScanBridge {
         }
     }
 
-    /// Releases a scanner from ``create(detect:sr:)``.
-    static func destroy(_ scanner: OpaquePointer?) {
-        guard let scanner, let scannerFree = WxScanNative.scannerFree else { return }
-        scannerFree(scanner)
+    /// Takes a reference to a scanner this side did not create, so that it
+    /// stays alive for as long as this side needs it.
+    ///
+    /// Returns the same handle, or 0 if it names no scanner — which is what a
+    /// handle left over from a previous Dart isolate looks like after a hot
+    /// restart.
+    static func retain(_ scanner: Int) -> Int {
+        guard scanner != 0, let retain = WxScanNative.scannerRetain else { return 0 }
+        return retain(scanner)
+    }
+
+    /// Gives a handle back. The scanner goes when its last holder does.
+    static func release(_ scanner: Int) {
+        guard scanner != 0, let release = WxScanNative.scannerRelease else { return }
+        release(scanner)
+    }
+
+    /// Whether the scanner has its detector network loaded.
+    ///
+    /// Worth asking rather than inferring for a scanner this side was lent: it
+    /// was built elsewhere, from weights this side never saw.
+    static func hasDetector(_ scanner: Int) -> Bool {
+        guard scanner != 0, let has = WxScanNative.hasDetector else { return false }
+        return has(scanner) != 0
     }
 
     /// Scans one frame and serializes the outcome.
@@ -43,7 +63,7 @@ enum WxScanBridge {
     ///     never mirrored, because the detector is trained on unmirrored input.
     /// - Returns: a JSON document, or the empty-frame document on failure.
     static func scanFrame(
-        _ scanner: OpaquePointer?,
+        _ scanner: Int,
         bytes: UnsafePointer<UInt8>,
         width: Int,
         height: Int,
@@ -51,7 +71,7 @@ enum WxScanBridge {
         rotation: Int32,
         mirror: Bool
     ) -> String {
-        guard let scanner,
+        guard scanner != 0,
               let scanFrame = WxScanNative.scanFrame,
               let out = scanFrame(
                   scanner,
