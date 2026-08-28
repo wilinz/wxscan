@@ -9,7 +9,7 @@ arrives in Dart is the outcome of each frame; the preview is a Flutter texture
 backed by the same buffer.
 
 To decode a still image instead, use
-[`wxscan`](https://pub.dev/packages/wxscan), which exposes the same
+[`wxscan`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan), which exposes the same
 scanner to Dart.
 
 **[Try it in a browser](https://wilinz.github.io/wxscan/)** — the example
@@ -19,9 +19,17 @@ decoding a picture never needs one.
 
 ## Quick start
 
-```sh
-flutter pub add wxscan_live
+Not on pub.dev yet, so take it from git. It brings `wxscan` with it:
+
+```yaml
+dependencies:
+  wxscan_live:
+    git:
+      url: https://github.com/wilinz/wxscan.git
+      path: packages/wxscan_live
 ```
+
+That follows the default branch; add a `ref` to pin a tag or a commit.
 
 **1. The weights.** They are not bundled. Download `detect.tflite` and
 `sr.tflite` from
@@ -320,7 +328,7 @@ differs:
 - The four files `wxscan` needs on the web have to be served by the
   application: `dart run wxscan:fetch_web` places them, fetching the compiled
   ones from the releases that package pins. Nothing has to be built —
-  [wxscan's README](https://pub.dev/packages/wxscan#building-the-scanner-yourself)
+  [wxscan's README](../wxscan/README.md#building-the-scanner-yourself)
   covers building them yourself, and why they are not shipped compiled. They go
   in `web/wxscan/`, where they are found without configuration.
 
@@ -336,7 +344,7 @@ differs:
 ## The native library
 
 Nothing native is built here. The scanner comes from
-[`wxscan`](https://pub.dev/packages/wxscan), whose build hook produces
+[`wxscan`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan), whose build hook produces
 it as a Dart code asset. This package depends on that one, so an application
 using either gets exactly one copy.
 

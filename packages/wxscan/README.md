@@ -5,7 +5,7 @@ CNN-based detection, super resolution, and decoding.
 
 This package decodes images and raw pixel buffers. It does not open a camera —
 for live scanning use
-[`wxscan_live`](https://pub.dev/packages/wxscan_live), which drives the camera
+[`wxscan_live`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan_live), which drives the camera
 natively and calls this package's native library from Swift and Kotlin.
 
 It is a plain Dart package, not a Flutter plugin: the native library is built
@@ -15,9 +15,18 @@ platform build files to maintain.
 
 ## Quick start
 
-```sh
-flutter pub add wxscan     # or `dart pub add wxscan` outside Flutter
+Not on pub.dev yet, so take it from git — this works from Flutter and from
+plain Dart alike:
+
+```yaml
+dependencies:
+  wxscan:
+    git:
+      url: https://github.com/wilinz/wxscan.git
+      path: packages/wxscan
 ```
+
+That follows the default branch; add a `ref` to pin a tag or a commit.
 
 The CNN weights are not bundled with the package. Download `detect.tflite` and
 `sr.tflite` from
@@ -179,7 +188,7 @@ result. A buffer that does not match its width and height is a mistake in the
 call, and an empty outcome would hide it as a frame with nothing in it.
 
 A scanner can also be lent to
-[`wxscan_live`](https://pub.dev/packages/wxscan_live) — `WxScanController(scanner:
+[`wxscan_live`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan_live) — `WxScanController(scanner:
 scanner)` — so an application that scans both live and from the photo library
 holds one scanner rather than two, with one copy of the weights in memory. The
 controller borrows it and never disposes it.
