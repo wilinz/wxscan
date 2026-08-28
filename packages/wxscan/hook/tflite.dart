@@ -156,10 +156,11 @@ Future<TfliteLibrary> fetchTflite({
     File.fromUri(cache.uri.resolve(archiveName)),
     need('SHA_$slug'),
   );
-  final out = File.fromUri(cache.uri.resolve('$slug/$libName'));
+  var out = File.fromUri(cache.uri.resolve('$slug/$libName'));
   _extractOne(archive, out, _isSharedLibrary);
 
   if (os == OS.macOS) {
+    out = _thin(out, architecture, cache.uri.resolve('$slug/'), libName);
     // The archive carries a versioned install name, so it is rewritten for the
     // loader to find the library by the name it is linked against.
     final r = Process.runSync('install_name_tool', [
@@ -224,6 +225,56 @@ Future<File> _download(String url, File out, String wantSha256) async {
 String _sha256(File f) => sha256.convert(f.readAsBytesSync()).toString();
 
 /// Extracts the first entry [matches] accepts from [archive] to [out].
+/// Cuts one architecture out of a macOS library that holds several.
+///
+/// A hook is called once per target architecture, and the Dart tooling that
+/// bundles what it returns cannot read a universal one: `dart test` stops at
+/// `Expected a single architecture section in otool output`, because it takes
+/// the install name from `otool -D`, which prints a section per architecture.
+/// So a universal library is thinned here and each build gets the slice it
+/// asked for. Sliced beside the whole file rather than over it, since the
+/// other architecture's build reads the same cache.
+///
+/// A library that already holds one architecture is returned untouched, so
+/// this costs nothing where the release is not universal.
+File _thin(File fat, Architecture architecture, Uri dir, String libName) {
+  final arch = switch (architecture) {
+    Architecture.arm64 => 'arm64',
+    Architecture.x64 => 'x86_64',
+    _ => throw StateError('wxscan: no macOS TFLite build for $architecture'),
+  };
+
+  final archs = Process.runSync('lipo', ['-archs', fat.path]);
+  if (archs.exitCode != 0) {
+    throw StateError('wxscan: lipo -archs failed: ${archs.stderr}');
+  }
+  final held = (archs.stdout as String).trim().split(RegExp(r'\s+'));
+  if (held.length == 1) {
+    if (held.single != arch) {
+      throw StateError('wxscan: ${fat.path} is $held, not $arch');
+    }
+    return fat;
+  }
+  if (!held.contains(arch)) {
+    throw StateError('wxscan: ${fat.path} holds $held, which does not include '
+        '$arch');
+  }
+
+  final out = File.fromUri(dir.resolve('$arch/$libName'));
+  if (out.existsSync()) return out;
+  out.parent.createSync(recursive: true);
+  // Written beside and moved into place: two architectures build at once, and
+  // an interrupted lipo must not leave a truncated library under a name that
+  // says it is finished.
+  final part = File('${out.path}.part');
+  final r = Process.runSync('lipo', ['-thin', arch, fat.path, '-output', part.path]);
+  if (r.exitCode != 0) {
+    throw StateError('wxscan: lipo -thin $arch failed: ${r.stderr}');
+  }
+  part.renameSync(out.path);
+  return out;
+}
+
 void _extractOne(File archive, File out, bool Function(String name) matches) {
   if (out.existsSync()) return;
   final bytes = archive.readAsBytesSync();
