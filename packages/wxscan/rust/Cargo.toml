@@ -29,14 +29,18 @@ encoding_rs = "0.8"
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = { version = "0.21", default-features = false }
-# HEIC, which the platform will not decode for us here: the NDK's decoder is
-# API 30 against this package's 24, and the Java one needs a JNIEnv this path
-# does not have. Pure Rust, so it costs size rather than compatibility. Apple
-# platforms use ImageIO instead and do not pull this in.
+
+# HEIC, everywhere the platform will not decode it for us — which is everywhere
+# except Apple. Android's NDK decoder is API 30 against this package's 24 and
+# ignores the orientation tag; its Java one needs a JNIEnv this path does not
+# have. Linux has no system decoder at all, and Windows only if the user has
+# installed the HEIF extension. Pure Rust, so it costs size rather than
+# compatibility, and the same size on each of them.
 #
 # heif-oxide rather than the `heic` crate, which is faster to say but is
 # AGPL-3.0-or-commercial: linking it would make this library's Apache-2.0
 # undeliverable. This one and everything under it are MIT OR Apache-2.0.
+[target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dependencies]
 heif-oxide = "0.1"
 
 # The HEIC decoder is pure Rust and so compiles anywhere. It is built for the

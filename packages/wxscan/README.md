@@ -95,15 +95,17 @@ different things to be said.
 
 ### Which pictures decode
 
-PNG, JPEG and GIF everywhere; WebP, BMP and TIFF everywhere except Apple, where
-the system reads them instead. HEIC — most of an iPhone's photo library — works
-on Apple, Android and in Safari. AVIF works on Apple and in a browser.
+PNG, JPEG, GIF, WebP, BMP, TIFF and HEIC on every platform this package
+supports. AVIF on Apple and in a browser. RAW, JPEG XL and another fifty on
+Apple.
 
 The rule behind that: a decoder is either carried here, at a cost in size, or
-borrowed from the platform, at no cost at all. Apple lends 62 formats through
-ImageIO, RAW files included. Android lends nothing usable, so HEIC is compiled
-in. A browser decodes its own pictures, which is why the web build carries no
-decoders whatsoever.
+borrowed from the platform, at no cost at all. **Apple lends** 62 formats
+through ImageIO, RAW included, since every application links it already.
+**Nowhere else lends anything usable** — Android's HEIC decoder is API 30 and
+ignores the orientation tag, Linux has none, Windows has one only if the user
+installed it — so those three carry their own. **A browser decodes its own
+pictures**, which is why the web build carries no decoders whatsoever.
 
 **[doc/image_formats.md](doc/image_formats.md)** has the full matrix, what each
 platform borrows and why, and how to lend one of your own.

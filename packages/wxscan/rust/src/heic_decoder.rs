@@ -1,22 +1,27 @@
-//! HEIC, decoded in Rust.
+//! HEIC, decoded in Rust, everywhere Apple's ImageIO is not.
 //!
-//! `wxscan-ffi` carries png, jpeg and gif. What is missing is HEIC, which is
-//! most of a modern photo library — and on Apple platforms ImageIO supplies it
-//! at no cost, being in the process already. Android has no such free lunch:
+//! `wxscan-ffi` carries png, jpeg and gif. What is missing is HEIC, most of a
+//! modern photo library — and Apple is the only platform that hands one over
+//! for free, ImageIO being in the process already. The other three have to
+//! carry this:
 //!
-//! * `AImageDecoder`, the NDK's decoder, is API 30. This package supports API
-//!   24, so a quarter of the fleet would silently keep the old behaviour — and
-//!   it does not apply the orientation a photograph records, which the other
-//!   two paths do, so pictures would come back a quarter turn out on this
-//!   platform alone.
-//! * The Java `ImageDecoder` does apply it and goes back to API 28, but it is
-//!   reached through JNI, and the decoder is called from whatever thread
-//!   scanned — no `JNIEnv` in hand, and no `JavaVM` cached, because nothing
-//!   here is entered from Java on this path.
+//! * **Android** has two decoders and neither is usable. `AImageDecoder`, the
+//!   NDK's, is API 30 against this package's 24, so a large part of the fleet
+//!   would silently keep the old behaviour — and it does not apply the
+//!   orientation a photograph records, which the other paths do, so pictures
+//!   would come back a quarter turn out on that platform alone. The Java
+//!   `ImageDecoder` does apply it and goes back to API 28, but it is reached
+//!   through JNI, and the decoder is called from whatever thread scanned — no
+//!   `JNIEnv` in hand, and no `JavaVM` cached, because nothing here is entered
+//!   from Java on this path.
+//! * **Linux** has no system image decoder to ask.
+//! * **Windows** has WIC, which reads HEIF only where the user installed the
+//!   HEIF Image Extension. A format that works on some machines and not others
+//!   is worse than one that works everywhere, and a library cannot ask anyone
+//!   to install anything.
 //!
-//! So the decoder is compiled in instead. It costs binary size where the
-//! system decoders cost none, and buys back the two things above: every
-//! supported API level, and the same upright picture as everywhere else.
+//! So it is compiled in on all three. It costs binary size where ImageIO costs
+//! none, and buys the same upright picture on every platform.
 //!
 //! # AVIF is not covered, and why
 //!
@@ -37,7 +42,7 @@
 //!
 //! Left undone deliberately. Apple and browsers read AVIF already, and it is a
 //! format found on the web rather than in a camera roll, so the gap is a
-//! picture saved from a page and then scanned on Android or a desktop. When
+//! picture saved from a page and then scanned on Android, Windows or Linux. When
 //! `oxideav-av1` implements pixel decode, adding it here is a few lines.
 //! `wxscan/doc/image_formats.md` has the full picture.
 

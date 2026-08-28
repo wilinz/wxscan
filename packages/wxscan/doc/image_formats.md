@@ -13,7 +13,7 @@ borrowed from the system, at no cost at all.
 | WebP | ✅ | ✅ | ✅ | ✅ |
 | BMP | ✅ | ✅ | ✅ | ◐ |
 | TIFF | ✅ | ✅ | ✅ | ◐ |
-| HEIC / HEIF | ✅ | ✅ | ❌ | Safari |
+| HEIC / HEIF | ✅ | ✅ | ✅ | Safari |
 | AVIF | ✅ | ❌ | ❌ | ✅ |
 | JPEG 2000, JPEG XL | ✅ | ❌ | ❌ | ❌ |
 | RAW (CR2, NEF, ARW, RAF, …) | ✅ | ❌ | ❌ | ❌ |
@@ -48,33 +48,41 @@ formats, and every application links ImageIO already, so this costs a few
 hundred bytes of glue. Most of the 62 are RAW: 38 camera-maker formats nobody
 would carry a decoder for.
 
-**Android carries HEIC in Rust**, which is the one place a platform decoder was
-turned down. See below.
+**HEIC is carried in Rust everywhere Apple is not.** Android, Windows and Linux
+all have to: there is nothing borrowable on any of them. See below.
 
 **A browser decodes its own pictures.** `createImageBitmap` reads everything
 the browser can display and the wasm module carries no decoders at all — it
 compiles none of `image-io`, which is why the web build stays small. HEIC works
 in Safari and nowhere else, because that is where the system decoder is.
 
-## Why Android compiles a HEIC decoder in
+## Why HEIC is compiled in off Apple
 
-HEIC is most of a modern photo library, and both ways of borrowing one from
-Android cost more than they are worth:
+HEIC is most of a modern photo library, and Apple is the only platform that
+hands one over for free. The rest:
 
-* `AImageDecoder`, the NDK's, is **API 30** against this package's 24. A large
-  part of the fleet would silently keep the old behaviour. It also ignores the
-  orientation a photograph records — the NDK header does not mention EXIF at
-  all — where the built-in and Apple paths apply it, so pictures would come
-  back a quarter turn out on Android alone. That is invisible at run time: the
-  symbol still decodes, only its coordinates are wrong.
-* The Java `ImageDecoder` does apply the tag and reaches back to API 28, but it
-  is reached through JNI, and the decoder runs on whatever thread scanned — no
-  `JNIEnv` in hand, and no `JavaVM` cached, because nothing on this path is
-  entered from Java.
+* **Android** has two decoders and neither is usable here. `AImageDecoder`, the
+  NDK's, is **API 30** against this package's 24 — a large part of the fleet
+  would silently keep the old behaviour — and it ignores the orientation a
+  photograph records, where the built-in and Apple paths apply it. That last one
+  is invisible at run time: the symbol still decodes, only its coordinates are
+  wrong. The Java `ImageDecoder` does apply the tag and reaches back to API 28,
+  but it is reached through JNI, and the decoder runs on whatever thread
+  scanned — no `JNIEnv` in hand, and no `JavaVM` cached, because nothing on
+  this path is entered from Java.
+* **Linux** has no system image decoder at all. There is no equivalent of
+  ImageIO to ask.
+* **Windows** has WIC, which reads HEIF only where the user has installed the
+  HEIF Image Extension from the Store. A format that works on some machines and
+  not others is worse than one that works everywhere, and this is a library
+  rather than an application: it cannot ask anyone to install anything.
 
-So `heif-oxide` is compiled in: 0.6 MB of static library, every supported API
-level, and the same upright picture as everywhere else. It decodes a 320x460
-HEIC in about 2 ms.
+So `heif-oxide` is compiled in on all three. It costs 0.6 MB of static library —
+the same 0.6 MB on each — and decodes a 320x460 HEIC in about 2 ms. Apple keeps
+ImageIO and does not pull it in.
+
+The line is the same one WebP, BMP and TIFF fall on: **borrow from Apple, carry
+everywhere else.** Only the web escapes both, decoding its own pictures.
 
 **A note on licences.** The first crate tried for this was `heic`, which is
 faster to say and marginally faster to run — and is AGPL-3.0-or-commercial.
