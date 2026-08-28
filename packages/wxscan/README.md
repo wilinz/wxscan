@@ -154,7 +154,20 @@ The asynchronous methods run in a background isolate, so a large image does not
 block the UI. `scanGraySync` and `scanFrameSync` are for callers already off the
 main isolate. Dropping a scanner without `dispose()` still releases it, but only
 when the garbage collector gets to it, which keeps the models in memory
-meanwhile.
+meanwhile — a debug build says so in the log when it happens.
+
+For a scanner that is wanted once rather than kept, `WxScanner.use` creates one,
+hands it to a callback and disposes it however that ends:
+
+```dart
+final outcome = await WxScanner.use((scanner) => scanner.scanImage(bytes));
+```
+
+`WxScanner.liveCount` reports how many scanners exist in the process. It is a
+diagnostic, for finding one that was never disposed: a test can assert it is
+back to zero, and a screen that opens and closes can be watched across a few
+passes to see whether it climbs. It counts scanners rather than holders, so one
+lent to `wxscan_live` still counts once.
 
 For camera frames, `scanFrame` takes a row stride, a rotation, and a `mirror`
 flag that mirrors the returned x coordinates. The frame itself is never

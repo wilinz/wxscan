@@ -29,6 +29,13 @@ First release.
   `scaleFactor` read and write without contending for the scanner's lock.
 - A scanner can be lent to `wxscan_live`, so an application that scans both
   live and from the photo library holds one scanner and one copy of the
-  weights. The two sides may be disposed in either order.
+  weights. The two sides may be disposed in either order: the native handle is
+  a counted reference rather than a pointer, so whichever lets go last frees
+  it, and one left over from an isolate that is gone names nothing rather than
+  being followed.
+- `WxScanner.use` creates a scanner for one piece of work and disposes it
+  however that ends, and `WxScanner.liveCount` says how many exist — enough to
+  assert in a test that nothing leaked, which from the outside was previously
+  invisible.
 - Mismatched dimensions raise `ArgumentError` instead of returning an empty
   result that looks like a frame with nothing in it.
