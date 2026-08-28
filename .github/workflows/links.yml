@@ -1,0 +1,31 @@
+# Every markdown link points at something that exists.
+#
+# Six were broken at once, and all six were the same mistake: a heading was
+# renamed and the links to it were not. `#heic-and-the-platform-decoder` and
+# `#building-the-scanner` had both stopped naming a section, in English and in
+# Chinese, and a seventh went in with the commit that added it. Nothing about a
+# dead anchor is visible while writing — GitHub renders the link, clicking it
+# scrolls nowhere in particular — so they accumulate until someone reads the
+# README with a mouse.
+#
+# Relative paths and anchors only; external links are not fetched. A job that
+# talks to the network fails on rate limits and on sites that answer robots
+# differently than browsers — crates.io returns 404 to anything without a
+# browser's user agent — and a check that cries wolf stops being read.
+name: links
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  markdown:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tool/check_links.py
