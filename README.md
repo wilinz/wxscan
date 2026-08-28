@@ -6,6 +6,13 @@ QR scanning for Flutter that reads the codes other scanners give up on: the
 `wechat_qrcode` algorithm — CNN detection and super resolution, not just a
 decoder — ported to Rust. No OpenCV, and no native build files to maintain.
 
+<img src="docs/demo.webp" width="300" alt="Two QR codes in one camera frame, each
+marked; tapping one opens its decoded text, a Chinese payload read as UTF-8.">
+
+*Two codes in one frame, one of them turned, read off a laptop screen — then the
+one that was tapped. The page being scanned is
+[`tool/qr_bench.html`](tool/qr_bench.html).*
+
 Neither package is on pub.dev yet, so both come from git:
 
 ```yaml

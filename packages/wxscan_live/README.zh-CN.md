@@ -13,6 +13,11 @@ Flutter 的实时二维码扫描，底层是 `wechat_qrcode` 算法的 Rust 移�
 [`wxscan`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan)，它把同一个
 扫描器暴露给 Dart。
 
+<img src="https://raw.githubusercontent.com/wilinz/wxscan/main/docs/demo.webp" width="300" alt="一帧里两个二维码都被框出，点开其中一个显示解出的
+中文文本，按 UTF-8 读取。">
+
+*一帧里两个码，其中一个还是转过的，从笔记本屏幕上扫下来，然后是点开的那一个。*
+
 **[在浏览器里试试](https://wilinz.github.io/wxscan/)**：就是这个示例应用，构建成 web，
 跑着同一个 Rust 扫描器编出来的 WebAssembly。打开是一个菜单，只有点了实时扫码才会申请
 相机，解码图片从来不需要。
