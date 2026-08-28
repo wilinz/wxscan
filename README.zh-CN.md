@@ -89,7 +89,7 @@ try {
 ```
 
 → [该调哪个方法](packages/wxscan/README.zh-CN.md#该调哪个方法) ·
-[HEIC 怎么办](packages/wxscan/README.zh-CN.md#heic-与平台解码器) ·
+[HEIC 怎么办](packages/wxscan/README.zh-CN.md#哪些图片能解) ·
 [调检测参数](packages/wxscan/README.zh-CN.md#调整检测参数) ·
 [扫描器怎么管](packages/wxscan/README.zh-CN.md#与扫描器打交道)
 
@@ -124,7 +124,7 @@ controller.scans.listen((outcome) {
 |---|---|
 | 一帧返回什么 | [结果](packages/wxscan/README.zh-CN.md#结果) · [实时结果](packages/wxscan_live/README.zh-CN.md#结果) |
 | 权重干什么用，没有会怎样 | [模型](packages/wxscan/README.zh-CN.md#模型) |
-| 浏览器上怎么部署 | [wxscan](packages/wxscan/README.zh-CN.md#浏览器) · [构建扫描器](packages/wxscan/README.zh-CN.md#构建扫描器) · [wxscan_live](packages/wxscan_live/README.zh-CN.md#浏览器) |
+| 浏览器上怎么部署 | [wxscan](packages/wxscan/README.zh-CN.md#浏览器) · [构建扫描器](packages/wxscan/README.zh-CN.md#自己构建扫描器) · [wxscan_live](packages/wxscan_live/README.zh-CN.md#浏览器) |
 | 原生库怎么编、怎么被找到 | [构建钩子](packages/wxscan/README.zh-CN.md#构建钩子) · [原生库](packages/wxscan_live/README.zh-CN.md#原生库) |
 | 一整页可以直接抄的扫描界面 | [`example/lib/scan_page.dart`](packages/wxscan_live/example/lib/scan_page.dart) |
 
@@ -162,7 +162,7 @@ controller.scans.listen((outcome) {
 | iOS | 13.0+ | AVFoundation，13.0+ |
 | macOS | 10.15+，arm64 | AVFoundation，10.15+ |
 | Linux、Windows | x86_64，Linux 还有 arm64 | — |
-| Web | worker 里的 WebAssembly；扫描器模块是[单独构建的，不随包分发](packages/wxscan/README.zh-CN.md#构建扫描器) | `getUserMedia`，预览是平台视图 |
+| Web | worker 里的 WebAssembly；扫描器模块是[单独构建的，不随包分发](packages/wxscan/README.zh-CN.md#自己构建扫描器) | `getUserMedia`，预览是平台视图 |
 | 纯 Dart（无 Flutter） | `dart run`、`dart test` | — |
 
 不支持 32 位 x86 的 Android。LiteRT 没出这个 ABI 的产物，要打这个 ABI 的应用得把它
