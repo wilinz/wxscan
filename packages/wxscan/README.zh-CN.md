@@ -317,10 +317,21 @@ tag 下；好多个版本的扫描器指向同一个，因为只有钉死的 TFL
 |---|---|
 | Android | arm64-v8a、armeabi-v7a、x86_64。LiteRT 没出 32 位 x86 的构建，要打那个 ABI 的应用得排掉它。 |
 | iOS | 13.0+ |
-| macOS | 10.15+，arm64 |
+| macOS | 10.15+，arm64——见下 |
 | Linux、Windows | x86_64（Linux 还有 arm64） |
 | Dart（无 Flutter） | macOS、Linux、Windows，`dart run` 和 `dart test` 会通过钩子编译并加载这个库 |
 | Web | worker 里的 WebAssembly，见[浏览器](#浏览器) |
+
+**macOS 只支持 Apple Silicon，而 release 构建默认是通用二进制。** 另一半（x86_64）没有
+TFLite 库可链：`tool/tflite.lock` 钉的桌面产物是 arm64 的，也不存在官方桌面发行版可以
+拿一份 Intel 的。所以应用要在 `macos/Runner/Configs/Release.xcconfig` 里加一行：
+
+```
+ARCHS = arm64
+```
+
+不加的话 `flutter build macos --release` 会在构建钩子里失败，而报错的位置离原因很远。
+example 里已经加了这一行。
 
 ## 许可
 

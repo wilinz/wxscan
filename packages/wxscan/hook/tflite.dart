@@ -130,7 +130,21 @@ Future<TfliteLibrary> fetchTflite({
   final version = need('DESKTOP_VERSION');
   final repo = need('DESKTOP_REPO');
   final (slug, ext, libName) = switch ((os, architecture)) {
-    (OS.macOS, _) => ('darwin_arm64', 'tar.gz', 'libtensorflowlite_c.dylib'),
+    (OS.macOS, Architecture.arm64) =>
+      ('darwin_arm64', 'tar.gz', 'libtensorflowlite_c.dylib'),
+    // Was `(OS.macOS, _)`, which handed the arm64 library to an x86_64 target
+    // and left the linker to say so — as a warning, in the middle of a
+    // verbose log, followed by a hook failure that named nothing. A macOS
+    // release build is universal unless told otherwise, so this is the shape
+    // every release build took.
+    (OS.macOS, _) => throw StateError(
+        'wxscan: there is no x86_64 TFLite build for macOS — the desktop '
+        'artifacts in tflite.lock are arm64 only, and no official desktop '
+        'distribution exists to take one from.\n'
+        'A macOS release build is universal by default, which is how a build '
+        'that runs in debug reaches this. Set ARCHS to arm64 in '
+        'macos/Runner/Configs/Release.xcconfig to build for Apple Silicon '
+        'alone, which is the platform this package supports.'),
     (OS.linux, Architecture.x64) => ('linux_amd64', 'tar.gz', 'libtensorflowlite_c.so'),
     (OS.linux, Architecture.arm64) => ('linux_arm64', 'tar.gz', 'libtensorflowlite_c.so'),
     (OS.windows, _) => ('windows_amd64', 'zip', 'tensorflowlite_c.dll'),

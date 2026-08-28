@@ -369,10 +369,23 @@ these two models use rather than the 150 a stock build registers.
 |---|---|
 | Android | arm64-v8a, armeabi-v7a, x86_64. LiteRT publishes no 32-bit x86 build, so an application targeting that ABI must exclude it. |
 | iOS | 13.0+ |
-| macOS | 10.15+, arm64 |
+| macOS | 10.15+, arm64 — see below |
 | Linux, Windows | x86_64 (Linux also arm64) |
 | Dart (no Flutter) | macOS, Linux, Windows — `dart run` and `dart test` build and load the library through the hook |
 | Web | WebAssembly in a worker; see [The browser](#the-browser) |
+
+**macOS is Apple Silicon only, and a release build is universal unless told
+otherwise.** There is no x86_64 TFLite library to build the other half against:
+the desktop artifacts pinned in `tool/tflite.lock` are arm64, and no official
+desktop distribution exists to take an Intel one from. So an application adds
+one line to `macos/Runner/Configs/Release.xcconfig`:
+
+```
+ARCHS = arm64
+```
+
+Without it `flutter build macos --release` fails in the build hook, which is a
+long way from the reason. The example carries the line.
 
 ## Licence
 
