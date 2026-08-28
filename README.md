@@ -31,13 +31,14 @@ dependencies:
       path: packages/wxscan_live
 ```
 
-The day they are published, that becomes:
+The day they are published, both come from one line:
 
-```yaml
-dependencies:
-  wxscan: ^0.1.0        # images and pixel buffers, no camera
-  wxscan_live: ^0.1.0   # live camera scanning, on top of it
+```sh
+flutter pub add wxscan wxscan_live
 ```
+
+`wxscan` decodes images and pixel buffers and opens no camera; `wxscan_live` is
+the live camera on top of it. Either can be added on its own.
 
 A git dependency follows the default branch. Pin a `ref` to a tag or a commit
 for anything you would rather have hold still.

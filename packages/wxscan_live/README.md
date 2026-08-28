@@ -39,11 +39,10 @@ dependencies:
       path: packages/wxscan_live
 ```
 
-The day it is published, that becomes:
+The day it is published:
 
-```yaml
-dependencies:
-  wxscan_live: ^0.1.0
+```sh
+flutter pub add wxscan_live
 ```
 
 The git form follows the default branch; add a `ref` to pin a tag or a commit.

@@ -34,11 +34,10 @@ dependencies:
       path: packages/wxscan_live
 ```
 
-发布之后写成：
+发布之后：
 
-```yaml
-dependencies:
-  wxscan_live: ^0.1.0
+```sh
+flutter pub add wxscan_live
 ```
 
 git 那种跟着默认分支走，加 `ref` 可以固定到某个 tag 或 commit。

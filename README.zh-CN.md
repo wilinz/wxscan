@@ -29,13 +29,14 @@ dependencies:
       path: packages/wxscan_live
 ```
 
-发布之后写成：
+发布之后一行就够：
 
-```yaml
-dependencies:
-  wxscan: ^0.1.0        # 图片和像素缓冲，不碰相机
-  wxscan_live: ^0.1.0   # 实时相机扫描，建在它上面
+```sh
+flutter pub add wxscan wxscan_live
 ```
+
+`wxscan` 解图片和像素缓冲，不碰相机；`wxscan_live` 是建在它上面的实时相机。也可以只
+装其中一个。
 
 git 依赖跟着默认分支走。想固定下来就加 `ref`，指向某个 tag 或 commit。
 
