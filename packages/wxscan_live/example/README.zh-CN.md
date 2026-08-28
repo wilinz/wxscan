@@ -27,3 +27,13 @@ example 的 1.1 MB 权重，是每次 `pub get` `wxscan_live` 都要付的 1.1 M
 [`assets/models/README.md`](assets/models/README.md)。权重去
 [wilinz/wxscan-weights](https://github.com/wilinz/wxscan-weights) 取，那里也放着
 `tools/convert.py`，从公开的 Caffe 模型生成它们的脚本。
+
+## 拿什么扫
+
+仓库里的 [`tool/qr_bench.html`](../../../tool/qr_bench.html) 在一张白底上摆两个二维码，
+字符数、模块边长、纠错等级和字符集各调各的，两个都能拖能转。在显示器上打开，拿手机对着扫。
+
+最该动的是模块边长。往后退一步，距离、角度、光照是一起变的；这个滑块只改一个模块能占到
+多少个相机像素，别的什么都不动——而那正是 CNN 检测器要解决的事。两个码同时在画面里能试
+到多码选择，转一个能试到角点坐标，反色那个开关对应的是 Rust 移植解得出、C++ 实现解不出
+的那种图。

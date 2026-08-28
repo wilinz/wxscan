@@ -36,3 +36,17 @@ runs, on plain image processing, and the home screen says so and points at
 [wilinz/wxscan-weights](https://github.com/wilinz/wxscan-weights), which also
 holds `tools/convert.py`, the scripts that produce them from the published
 Caffe models.
+
+## Something to scan
+
+[`tool/qr_bench.html`](../../../tool/qr_bench.html) in this repository puts two
+QR codes on a white page, each with its own length, module size, error
+correction and character set, both draggable and rotatable. Open it on a monitor
+and point the phone at it.
+
+Module size is the control to reach for. Walking backwards changes the distance,
+the angle and the lighting at once; the slider changes how many pixels of camera
+a module gets and nothing else, which is what the CNN detector is there for. Two
+codes at once exercise the picker, a turned one exercises the corner
+coordinates, and the inverted switch is the case the Rust port reads and the
+C++ implementation does not.

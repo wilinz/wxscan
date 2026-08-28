@@ -1,0 +1,755 @@
+<!--
+  A bench for testing the scanner by hand: two QR codes on a white stage, each
+  with its own length, module size, error correction and character set, and
+  both draggable and rotatable. Open it on a monitor and point a phone at it.
+
+  Module size is the control that matters most here. Walking backwards changes
+  the distance and the angle and the lighting at once; this changes how many
+  pixels of camera a module gets and nothing else, which is the thing the CNN
+  detector is there for.
+
+  The QR encoder comes from cdnjs, so the page wants the network the first time
+  it is opened. It is not vendored for the reason nothing else here is: 20 KB of
+  minified third-party code in the tree has to be read, licensed and kept up to
+  date, and this page is not worth that.
+-->
+<title>Two-Code Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #eef1ed;
+    --panel: #f8faf7;
+    --stage: #ffffff;
+    --ink: #121712;
+    --muted: #66716a;
+    --line: #d5dcd6;
+    --line-firm: #b8c2ba;
+    --accent: #07c160;
+    --accent-ink: #05622f;
+    --a: #07c160;
+    --b: #2d6df6;
+    --warn: #c2410c;
+    --shadow: 0 1px 2px rgba(18, 23, 18, .07), 0 8px 24px rgba(18, 23, 18, .06);
+    --radius: 10px;
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #10130f;
+      --panel: #171b16;
+      --ink: #e7ece6;
+      --muted: #909b91;
+      --line: #262c25;
+      --line-firm: #3a423a;
+      --accent: #2ad57d;
+      --accent-ink: #b6f0d0;
+      --a: #2ad57d;
+      --b: #6f9bff;
+      --warn: #f97316;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 30px rgba(0, 0, 0, .35);
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #10130f;
+    --panel: #171b16;
+    --ink: #e7ece6;
+    --muted: #909b91;
+    --line: #262c25;
+    --line-firm: #3a423a;
+    --accent: #2ad57d;
+    --accent-ink: #b6f0d0;
+    --a: #2ad57d;
+    --b: #6f9bff;
+    --warn: #f97316;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 30px rgba(0, 0, 0, .35);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 14px;
+    padding: 14px;
+    height: 100vh;
+  }
+
+  /* ---- control rail ---- */
+
+  .rail {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .masthead h1 {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    text-wrap: balance;
+  }
+
+  .masthead p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    max-width: 40ch;
+  }
+
+  .block {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--ground);
+    padding: 12px 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+
+  .block-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .chip {
+    width: 17px;
+    height: 17px;
+    border-radius: 5px;
+    display: grid;
+    place-items: center;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0;
+  }
+
+  .chip.a { background: var(--a); }
+  .chip.b { background: var(--b); }
+
+  .block-head .spacer { margin-left: auto; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+
+  .field > label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .field .value {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    color: var(--ink);
+  }
+
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+    margin: 0;
+  }
+
+  select, button {
+    font: inherit;
+    color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--line-firm);
+    border-radius: 7px;
+    padding: 6px 9px;
+    font-size: 12.5px;
+  }
+
+  select { width: 100%; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+
+  :is(button, select, input, .card, .rot):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+
+  .toggle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .toggle input { accent-color: var(--accent); margin: 0; }
+
+  .readout {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--muted);
+    border-top: 1px dashed var(--line-firm);
+    padding-top: 9px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 12px;
+  }
+
+  .readout dt { color: var(--muted); }
+  .readout dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+  .readout dd.over { color: var(--warn); }
+
+  .hint {
+    font-size: 11.5px;
+    color: var(--muted);
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+
+  .hint kbd {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 10.5px;
+    border: 1px solid var(--line-firm);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 0 4px;
+    color: var(--ink);
+  }
+
+  /* ---- stage ---- */
+
+  .stage {
+    position: relative;
+    background: var(--stage);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  .card {
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: #fff;
+    padding: 10px;
+    border-radius: 4px;
+    transform-origin: center center;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+    box-shadow: 0 0 0 1px rgba(18, 23, 18, .08);
+  }
+
+  .card.dragging { cursor: grabbing; }
+  .card.sel { box-shadow: 0 0 0 2px var(--sel, var(--accent)); }
+  .card canvas { display: block; image-rendering: pixelated; }
+
+  .card .tag {
+    margin-top: 8px;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .card .tag .swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--sel);
+  }
+
+  .card .oops {
+    width: 190px;
+    font-size: 12px;
+    color: #b45309;
+    line-height: 1.45;
+    padding: 6px 2px;
+  }
+
+  .rot {
+    position: absolute;
+    top: -13px;
+    right: -13px;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--panel);
+    border: 1px solid var(--line-firm);
+    display: grid;
+    place-items: center;
+    cursor: grab;
+    color: var(--muted);
+  }
+
+  .rot:active { cursor: grabbing; }
+  .rot svg { width: 13px; height: 13px; display: block; }
+
+  /* ---- clean stage ---- */
+
+  body.clean .rail,
+  body.clean .rot,
+  body.clean .card .tag { display: none; }
+
+  body.clean .card { box-shadow: none; }
+  body.clean .app { grid-template-columns: 1fr; padding: 0; height: 100vh; }
+  body.clean .stage { border: 0; border-radius: 0; }
+
+  .escape {
+    position: fixed;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    display: none;
+    background: rgba(18, 23, 18, .78);
+    color: #fff;
+    border: 0;
+    border-radius: 99px;
+    padding: 7px 15px;
+    font-size: 12px;
+    backdrop-filter: blur(6px);
+  }
+
+  body.clean .escape { display: block; }
+
+  @media (max-width: 820px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: 100vh; }
+    .rail { max-height: 46vh; }
+  }
+</style>
+
+<div class="app">
+  <aside class="rail" id="rail">
+    <div class="masthead">
+      <h1>Two-Code Bench</h1>
+      <p>Two codes, each with its own length, module size, error correction and
+      character set. Drag them about, turn them, and point a phone at the screen.</p>
+    </div>
+
+    <section class="block" data-card="a">
+      <div class="block-head"><span class="chip a">A</span> Code A <span class="spacer"></span><span class="deg" data-deg>0°</span></div>
+
+      <div class="field">
+        <label for="a-len">Characters <span class="value" data-len-out>128</span></label>
+        <input type="range" id="a-len" data-len min="1" max="1000" value="128">
+      </div>
+
+      <div class="field">
+        <label for="a-mod">Module <span class="value" data-mod-out>4 px</span></label>
+        <input type="range" id="a-mod" data-mod min="1" max="12" value="4">
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="a-set">Character set</label>
+          <select id="a-set" data-set>
+            <option value="url">URL</option>
+            <option value="ascii">Letters and digits</option>
+            <option value="digits">Digits only</option>
+            <option value="cjk">Chinese</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="a-ec">Error correction</label>
+          <select id="a-ec" data-ec>
+            <option value="L">L 7%</option>
+            <option value="M" selected>M 15%</option>
+            <option value="Q">Q 25%</option>
+            <option value="H">H 30%</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="toggle"><input type="checkbox" data-inv> Inverted, white on black</label>
+
+      <dl class="readout">
+        <dt>Version</dt><dd data-ver>—</dd>
+        <dt>Matrix</dt><dd data-mat>—</dd>
+        <dt>On screen</dt><dd data-px>—</dd>
+        <dt>Content</dt><dd data-text>—</dd>
+      </dl>
+    </section>
+
+    <section class="block" data-card="b">
+      <div class="block-head"><span class="chip b">B</span> Code B <span class="spacer"></span><span class="deg" data-deg>0°</span></div>
+
+      <div class="field">
+        <label for="b-len">Characters <span class="value" data-len-out>32</span></label>
+        <input type="range" id="b-len" data-len min="1" max="1000" value="32">
+      </div>
+
+      <div class="field">
+        <label for="b-mod">Module <span class="value" data-mod-out>3 px</span></label>
+        <input type="range" id="b-mod" data-mod min="1" max="12" value="3">
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="b-set">Character set</label>
+          <select id="b-set" data-set>
+            <option value="url">URL</option>
+            <option value="ascii">Letters and digits</option>
+            <option value="digits">Digits only</option>
+            <option value="cjk" selected>Chinese</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="b-ec">Error correction</label>
+          <select id="b-ec" data-ec>
+            <option value="L">L 7%</option>
+            <option value="M" selected>M 15%</option>
+            <option value="Q">Q 25%</option>
+            <option value="H">H 30%</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="toggle"><input type="checkbox" data-inv> Inverted, white on black</label>
+
+      <dl class="readout">
+        <dt>Version</dt><dd data-ver>—</dd>
+        <dt>Matrix</dt><dd data-mat>—</dd>
+        <dt>On screen</dt><dd data-px>—</dd>
+        <dt>Content</dt><dd data-text>—</dd>
+      </dl>
+    </section>
+
+    <div class="row">
+      <button id="reset">Reset layout</button>
+      <button id="clean">Clean stage</button>
+    </div>
+
+    <p class="hint">
+      Drag a card to move it, drag the handle at its corner to turn it. With one
+      selected, <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> nudge it and
+      <kbd>[</kbd> <kbd>]</kbd> turn it 5°, or 1° with <kbd>Shift</kbd> held. The clean
+      stage leaves nothing but white and the two codes; <kbd>Esc</kbd> comes back.
+    </p>
+  </aside>
+
+  <main class="stage" id="stage">
+    <div class="card" id="card-a" tabindex="0" style="--sel: var(--a)">
+      <canvas></canvas>
+      <div class="tag"><span class="swatch"></span><span data-tag>A</span></div>
+      <button class="rot" tabindex="-1" aria-label="Turn code A">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 12a8 8 0 1 1-2.6-5.9"></path>
+          <path d="M20 3v5h-5"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div class="card" id="card-b" tabindex="0" style="--sel: var(--b)">
+      <canvas></canvas>
+      <div class="tag"><span class="swatch"></span><span data-tag>B</span></div>
+      <button class="rot" tabindex="-1" aria-label="Turn code B">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 12a8 8 0 1 1-2.6-5.9"></path>
+          <path d="M20 3v5h-5"></path>
+        </svg>
+      </button>
+    </div>
+  </main>
+</div>
+
+<button class="escape" id="escape">Leave the clean stage</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // Byte mode carries UTF-8, so Chinese payloads encode the way a phone
+  // camera will meet them in the wild.
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+
+  var QUIET = 4;   // modules of white around the symbol, as the spec asks
+
+  var FILLER = {
+    // Numeric mode: nothing but digits, or the encoder drops out of it.
+    digits: { head: function (id) { return id === 'a' ? '1' : '2'; },
+              body: '0123456789' },
+    // Alphanumeric mode: uppercase letters and digits only.
+    ascii:  { head: function (id) { return id.toUpperCase() + '-'; },
+              body: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' },
+    url:    { head: function (id) { return 'https://wxscan.test/' + id + '?n='; },
+              body: 'abcdefghijklmnopqrstuvwxyz0123456789' },
+    cjk:    { head: function (id) { return id.toUpperCase() + '·'; },
+              body: '微信扫码测试文本内容长度可调整这里是填充字符' }
+  };
+
+  function payload(id, set, n) {
+    var f = FILLER[set] || FILLER.url;
+    var s = f.head(id);
+    while (s.length < n) s += f.body;
+    return s.slice(0, n);
+  }
+
+  function bytes(s) {
+    return new TextEncoder().encode(s).length;
+  }
+
+  var stage = document.getElementById('stage');
+
+  var cards = ['a', 'b'].map(function (id) {
+    var el = document.getElementById('card-' + id);
+    return {
+      id: id,
+      el: el,
+      canvas: el.querySelector('canvas'),
+      tag: el.querySelector('[data-tag]'),
+      panel: document.querySelector('.block[data-card="' + id + '"]'),
+      x: 0, y: 0, deg: 0
+    };
+  });
+
+  var selected = cards[0];
+
+  function ctrl(card, name) {
+    return card.panel.querySelector('[data-' + name + ']');
+  }
+
+  function place(card) {
+    card.el.style.transform =
+      'translate(' + Math.round(card.x) + 'px,' + Math.round(card.y) + 'px) rotate(' + card.deg + 'deg)';
+    ctrl(card, 'deg').textContent = Math.round(card.deg) + '°';
+  }
+
+  function clamp(card) {
+    // Keep a grabbable corner on the stage however far it is flung.
+    var w = card.el.offsetWidth, h = card.el.offsetHeight;
+    card.x = Math.min(Math.max(card.x, 24 - w), stage.clientWidth - 24);
+    card.y = Math.min(Math.max(card.y, 24 - h), stage.clientHeight - 24);
+  }
+
+  function render(card) {
+    var len = +ctrl(card, 'len').value;
+    var mod = +ctrl(card, 'mod').value;
+    var set = ctrl(card, 'set').value;
+    var ec = ctrl(card, 'ec').value;
+    var inverted = ctrl(card, 'inv').checked;
+
+    ctrl(card, 'len-out').textContent = len;
+    ctrl(card, 'mod-out').textContent = mod + ' px';
+
+    var text = payload(card.id, set, len);
+    var qr = qrcode(0, ec);
+    qr.addData(text);
+
+    var oops = card.el.querySelector('.oops');
+    try {
+      qr.make();
+    } catch (e) {
+      // The one failure that is the operator's to fix, so say which knob.
+      if (!oops) {
+        oops = document.createElement('div');
+        oops.className = 'oops';
+        card.canvas.after(oops);
+      }
+      card.canvas.style.display = 'none';
+      oops.textContent = 'Too many characters to fit. Lower Characters, or drop error correction to L.';
+      ctrl(card, 'ver').textContent = '—';
+      ctrl(card, 'mat').textContent = '—';
+      ctrl(card, 'px').textContent = '—';
+      var over = ctrl(card, 'text');
+      over.textContent = 'over capacity';
+      over.classList.add('over');
+      card.tag.textContent = card.id.toUpperCase() + ' · over capacity';
+      return;
+    }
+    if (oops) oops.remove();
+    card.canvas.style.display = 'block';
+    ctrl(card, 'text').classList.remove('over');
+
+    var count = qr.getModuleCount();
+    var version = (count - 17) / 4;
+    var side = (count + QUIET * 2) * mod;
+
+    var canvas = card.canvas;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = side * dpr;
+    canvas.height = side * dpr;
+    canvas.style.width = side + 'px';
+    canvas.style.height = side + 'px';
+
+    var g = canvas.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.fillStyle = inverted ? '#000' : '#fff';
+    g.fillRect(0, 0, side, side);
+    g.fillStyle = inverted ? '#fff' : '#000';
+    for (var r = 0; r < count; r++) {
+      for (var c = 0; c < count; c++) {
+        if (qr.isDark(r, c)) {
+          g.fillRect((c + QUIET) * mod, (r + QUIET) * mod, mod, mod);
+        }
+      }
+    }
+
+    var b = bytes(text);
+    ctrl(card, 'ver').textContent = 'v' + version + ' · ' + ec;
+    ctrl(card, 'mat').textContent = count + ' × ' + count + ' modules';
+    ctrl(card, 'px').textContent = side + ' × ' + side + ' px';
+    ctrl(card, 'text').textContent =
+      len + ' ch / ' + b + ' B · ' + text.slice(0, 22) + (text.length > 22 ? '…' : '');
+    card.tag.textContent =
+      card.id.toUpperCase() + ' · ' + len + ' ch · v' + version + ' · ' + ec + ' · ' + mod + 'px';
+
+    clamp(card);
+    place(card);
+  }
+
+  function select(card) {
+    selected = card;
+    cards.forEach(function (c) { c.el.classList.toggle('sel', c === card); });
+  }
+
+  // ---- dragging and rotating -------------------------------------------
+
+  cards.forEach(function (card) {
+    var drag = null;
+
+    card.el.addEventListener('pointerdown', function (e) {
+      select(card);
+      var rot = e.target.closest('.rot');
+      var box = card.el.getBoundingClientRect();
+      var cx = box.left + box.width / 2;
+      var cy = box.top + box.height / 2;
+
+      drag = rot
+        ? { mode: 'rot', from: Math.atan2(e.clientY - cy, e.clientX - cx), deg: card.deg, cx: cx, cy: cy }
+        : { mode: 'move', dx: e.clientX - card.x, dy: e.clientY - card.y };
+
+      if (!rot) card.el.classList.add('dragging');
+      card.el.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+
+    card.el.addEventListener('pointermove', function (e) {
+      if (!drag) return;
+      if (drag.mode === 'move') {
+        card.x = e.clientX - drag.dx;
+        card.y = e.clientY - drag.dy;
+      } else {
+        var now = Math.atan2(e.clientY - drag.cy, e.clientX - drag.cx);
+        var deg = drag.deg + (now - drag.from) * 180 / Math.PI;
+        // Shift snaps to 15°, for a rotation you can describe in a bug report.
+        card.deg = e.shiftKey ? Math.round(deg / 15) * 15 : Math.round(deg);
+      }
+      clamp(card);
+      place(card);
+    });
+
+    function end(e) {
+      drag = null;
+      card.el.classList.remove('dragging');
+      if (card.el.hasPointerCapture(e.pointerId)) card.el.releasePointerCapture(e.pointerId);
+    }
+
+    card.el.addEventListener('pointerup', end);
+    card.el.addEventListener('pointercancel', end);
+    card.el.addEventListener('focus', function () { select(card); });
+
+    ['len', 'mod', 'set', 'ec', 'inv'].forEach(function (name) {
+      ctrl(card, name).addEventListener('input', function () { render(card); });
+    });
+  });
+
+  // ---- keyboard ---------------------------------------------------------
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { document.body.classList.remove('clean'); return; }
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+
+    var step = e.shiftKey ? 1 : 10;
+    var moved = true;
+    switch (e.key) {
+      case 'ArrowLeft':  selected.x -= step; break;
+      case 'ArrowRight': selected.x += step; break;
+      case 'ArrowUp':    selected.y -= step; break;
+      case 'ArrowDown':  selected.y += step; break;
+      case '[': selected.deg -= e.shiftKey ? 1 : 5; break;
+      case ']': selected.deg += e.shiftKey ? 1 : 5; break;
+      default: moved = false;
+    }
+    if (!moved) return;
+    e.preventDefault();
+    clamp(selected);
+    place(selected);
+  });
+
+  // ---- layout -----------------------------------------------------------
+
+  function reset() {
+    var w = stage.clientWidth, h = stage.clientHeight;
+    cards.forEach(function (card, i) {
+      var box = card.el.getBoundingClientRect();
+      card.deg = i === 0 ? 0 : 18;
+      card.x = w * (i === 0 ? 0.28 : 0.68) - box.width / 2;
+      card.y = h * (i === 0 ? 0.42 : 0.56) - box.height / 2;
+      clamp(card);
+      place(card);
+    });
+  }
+
+  document.getElementById('reset').addEventListener('click', reset);
+
+  document.getElementById('clean').addEventListener('click', function () {
+    document.body.classList.add('clean');
+    requestAnimationFrame(function () { cards.forEach(clamp); cards.forEach(place); });
+  });
+
+  document.getElementById('escape').addEventListener('click', function () {
+    document.body.classList.remove('clean');
+    requestAnimationFrame(function () { cards.forEach(clamp); cards.forEach(place); });
+  });
+
+  window.addEventListener('resize', function () {
+    cards.forEach(clamp);
+    cards.forEach(place);
+  });
+
+  cards.forEach(render);
+  select(cards[0]);
+  reset();
+})();
+</script>
