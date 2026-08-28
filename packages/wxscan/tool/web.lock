@@ -21,13 +21,6 @@
 # this package pins for every other platform, and tool/check_tflite_web.sh says
 # so; the revision is the build repository's own, counting the patches built on
 # top of that TensorFlow, which change while the version stays put.
-#
-# THE TFLITE CHECKSUMS BELOW ARE NOT YET THIS TAG'S. They are the bytes
-# wxscan-rs published as tflite-v2.17.1-p2, from the same sources, before that
-# build moved out into a repository of its own. Run tool/stamp_web.sh against
-# the first release of wxscan-litert-wasm and this file is written properly;
-# until then `dart run wxscan:fetch_web` cannot find the runtime at all, the
-# tag not existing yet.
 
 SCANNER_REPO=wilinz/wxscan-rs
 SCANNER_TAG=v0.1.0
