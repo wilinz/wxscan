@@ -326,6 +326,50 @@ void main() {
     });
   });
 
+  group('a scanner built from weight paths', () {
+    test('a path that is not there leaves a scanner that still decodes', () async {
+      // The contract weights have always had: unloadable is not fatal, the
+      // pipeline degrades to plain decoding, and hasDetector says so. A path
+      // that is not there is the same answer, said in the native log with the
+      // path — which is the one thing the caller needs to fix it.
+      final scanner = await WxScanner.create(
+        detectModelPath: '/nowhere/detect.tflite',
+      );
+      addTearDown(scanner.dispose);
+      expect(scanner.hasDetector, isFalse);
+      expect((await scanner.scanPath('test/data/code.png')).results, isNotEmpty);
+    });
+
+    test('a file that is not weights is the same', () async {
+      final f = File('${Directory.systemTemp.path}/wxscan-not-a-model.bin');
+      await f.writeAsBytes(List<int>.filled(64, 7));
+      addTearDown(() => f.deleteSync());
+
+      final scanner = await WxScanner.create(detectModelPath: f.path);
+      addTearDown(scanner.dispose);
+      expect(scanner.hasDetector, isFalse);
+    });
+
+    test('bytes and a path for the same model is refused', () {
+      // Not a preference between them: taking one silently would mean the
+      // scanner ran on weights the caller did not think it had passed.
+      expect(
+        () => WxScanner.create(
+          detectModel: Uint8List.fromList([1, 2, 3]),
+          detectModelPath: '/tmp/detect.tflite',
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => WxScanner.create(
+          srModel: Uint8List.fromList([1, 2, 3]),
+          srModelPath: '/tmp/sr.tflite',
+        ),
+        throwsArgumentError,
+      );
+    });
+  });
+
   group('a picture read from a path', () {
     // The same code as the group above, written out as a file: the native
     // reader has to arrive at what the in-memory paths arrive at.

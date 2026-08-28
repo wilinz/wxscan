@@ -250,6 +250,24 @@ fails to load falls back to that mode rather than throwing. Decoding still works
 there; what it loses is the detection rate on small or distant symbols, which is
 what the CNN stages contribute. `hasModels` reports which mode is active.
 
+Weights on disk go by path instead, and the native library reads them on the
+worker isolate, so the megabyte is never held on the isolate that asked:
+
+```dart
+final scanner = await WxScanner.create(
+  detectModelPath: '${dir.path}/detect.tflite',
+  srModelPath: '${dir.path}/sr.tflite',
+);
+```
+
+That is for weights downloaded or copied somewhere — **a Flutter asset is not a
+file**. An asset lives inside the application package with no path to open, so
+`assets/models/detect.tflite` names nothing here; load it with `rootBundle` and
+pass the bytes. A model is given one way or the other, never both. A path that
+will not read falls back exactly as unloadable bytes do, with which file and
+why in the log. In a browser a path throws `UnsupportedError`: there is no
+filesystem to read it from.
+
 ## The build hook
 
 `hook/build.dart` does everything the platform build systems used to: it

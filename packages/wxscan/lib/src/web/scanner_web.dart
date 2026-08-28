@@ -172,8 +172,15 @@ class WxScanner {
     FutureOr<R> Function(WxScanner scanner) body, {
     Uint8List? detectModel,
     Uint8List? srModel,
+    String? detectModelPath,
+    String? srModelPath,
   }) async {
-    final scanner = await create(detectModel: detectModel, srModel: srModel);
+    final scanner = await create(
+      detectModel: detectModel,
+      srModel: srModel,
+      detectModelPath: detectModelPath,
+      srModelPath: srModelPath,
+    );
     try {
       return await body(scanner);
     } finally {
@@ -186,14 +193,30 @@ class WxScanner {
   /// Passing null for both weights selects the mode without models, which
   /// still decodes but finds small or distant symbols far less often. Loading
   /// takes a moment: the worker fetches two WebAssembly modules.
+  ///
+  /// [detectModelPath] and [srModelPath] exist on the other platforms and
+  /// throw [UnsupportedError] here: a browser has no filesystem, and the
+  /// scanner is a WebAssembly module in a worker that could not open a path if
+  /// there were one. Refused rather than ignored, because a path quietly
+  /// dropped leaves the page decoding without its detector and nothing said.
+  /// Fetch the weights and pass the bytes.
   static Future<WxScanner> create({
     Uint8List? detectModel,
     Uint8List? srModel,
-  }) async =>
-      WxScanner._(await startWxScanWorker(
-        detectModel: detectModel,
-        srModel: srModel,
-      ));
+    String? detectModelPath,
+    String? srModelPath,
+  }) async {
+    if (detectModelPath != null || srModelPath != null) {
+      throw UnsupportedError(
+        'wxscan: a browser cannot read weights from a path. Pass the bytes '
+        'instead — detectModel and srModel — fetched or loaded from an asset.',
+      );
+    }
+    return WxScanner._(await startWxScanWorker(
+      detectModel: detectModel,
+      srModel: srModel,
+    ));
+  }
 
   void _checkAlive() {
     if (_disposed) {

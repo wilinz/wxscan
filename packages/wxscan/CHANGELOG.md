@@ -21,6 +21,11 @@ First release.
   no paths. PNG, JPEG and GIF everywhere; WebP, BMP and TIFF where the platform
   lends nothing; HEIC on Apple, Android and in Safari. `doc/image_formats.md`
   is the matrix, and the platform can be lent a decoder for the rest.
+- `WxScanner.create` takes the weights as bytes or as paths —
+  `detectModelPath` and `srModelPath` — and the path form is read by the native
+  library on the worker isolate, so the megabyte is never held on the isolate
+  that asked. Flutter assets have no path and still go as bytes; a browser has
+  no filesystem and refuses a path outright.
 - Scanning runs on a worker isolate owned by the scanner, so a stream costs one
   message round trip per frame rather than an isolate spawn.
 - `scanPixels` takes RGB, RGBA, BGR or BGRA and converts natively, so a caller

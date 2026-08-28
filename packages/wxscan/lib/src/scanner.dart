@@ -161,8 +161,15 @@ class WxScanner implements ffi.Finalizable {
     FutureOr<R> Function(WxScanner scanner) body, {
     Uint8List? detectModel,
     Uint8List? srModel,
+    String? detectModelPath,
+    String? srModelPath,
   }) async {
-    final scanner = await create(detectModel: detectModel, srModel: srModel);
+    final scanner = await create(
+      detectModel: detectModel,
+      srModel: srModel,
+      detectModelPath: detectModelPath,
+      srModelPath: srModelPath,
+    );
     try {
       return await body(scanner);
     } finally {
@@ -170,20 +177,38 @@ class WxScanner implements ffi.Finalizable {
     }
   }
 
-  /// Creates a scanner from model bytes.
+  /// Creates a scanner from model bytes, or from model files.
   ///
   /// The weights may be TFLite or ONNX; which formats work depends on the
   /// backends the native library was built with, and the format is detected
   /// from the buffer rather than declared.
   ///
-  /// Passing null for both selects the mode without models. If a model fails to
-  /// load, this falls back to that mode rather than throwing, so a corrupt
-  /// asset degrades the detection rate instead of breaking the feature; check
-  /// [hasDetector] for which mode is active.
+  /// Passing null for everything selects the mode without models. If a model
+  /// fails to load, this falls back to that mode rather than throwing, so a
+  /// corrupt asset degrades the detection rate instead of breaking the
+  /// feature; check [hasDetector] for which mode is active.
+  ///
+  /// [detectModelPath] and [srModelPath] are the same weights as files on
+  /// disk, for weights that were downloaded or copied somewhere. The native
+  /// library reads them on the worker isolate, so the megabyte is never held
+  /// here. **A Flutter asset is not a file**: it lives inside the application
+  /// package with no path to open, so `assets/models/detect.tflite` names
+  /// nothing — load it with `rootBundle` and pass the bytes.
+  ///
+  /// A model is given as bytes or as a path, never both, and a path is
+  /// unsupported in a browser, which has no filesystem to read.
   static Future<WxScanner> create({
     Uint8List? detectModel,
     Uint8List? srModel,
+    String? detectModelPath,
+    String? srModelPath,
   }) async {
+    if (detectModel != null && detectModelPath != null) {
+      throw ArgumentError('wxscan: pass detectModel or detectModelPath, not both');
+    }
+    if (srModel != null && srModelPath != null) {
+      throw ArgumentError('wxscan: pass srModel or srModelPath, not both');
+    }
     // Before anything is scanned, so that scanImage reads what the platform
     // reads rather than only png, jpeg and gif. Idempotent, and a no-op where
     // the platform has nothing to lend.
@@ -194,7 +219,24 @@ class WxScanner implements ffi.Finalizable {
     // else holds it.
     var handle = 0;
     try {
-      handle = await worker.run(_CreateRequest(detectModel, srModel));
+      if (detectModelPath != null || srModelPath != null) {
+        final (id, status) =
+            await worker.run(_CreatePathRequest(detectModelPath, srModelPath));
+        handle = id;
+        if (handle == 0) {
+          // Which of the three mistakes it was, since only the caller can fix
+          // it and only this line knows. Not thrown, for the same reason
+          // weights that will not load are not: the scanner still decodes.
+          developer.log(
+            'weights were not loaded from those paths (${_pathTrouble(status)}): '
+            'detect=$detectModelPath sr=$srModelPath. Continuing without them, '
+            'so detection is image processing only',
+            name: 'wxscan',
+          );
+        }
+      } else {
+        handle = await worker.run(_CreateRequest(detectModel, srModel));
+      }
       if (handle == 0) {
         // A model that will not load is not fatal; plain decoding still reads
         // ordinary symbols. It is worth saying out loud, though: this used to
@@ -597,6 +639,49 @@ class _CreateRequest extends _Request<int> {
     }
   }
 }
+
+/// Builds a scanner from weight files, reading them on the worker isolate.
+///
+/// The reading is here rather than in [WxScanner.create] so that a megabyte of
+/// weights is never held on the isolate that called it: the path goes across,
+/// the bytes never come back.
+///
+/// Carries the status out rather than throwing, because the three ways a path
+/// can be wrong are the caller's to tell apart and a handle of zero says only
+/// that something was.
+class _CreatePathRequest extends _Request<(int, int)> {
+  const _CreatePathRequest(this.detectPath, this.srPath);
+
+  final String? detectPath;
+  final String? srPath;
+
+  @override
+  (int, int) run() {
+    final d = detectPath?.toNativeUtf8();
+    final s = srPath?.toNativeUtf8();
+    final status = calloc<ffi.Int32>();
+    try {
+      final id = wxscan_scanner_new_path(
+        d?.cast() ?? ffi.nullptr,
+        s?.cast() ?? ffi.nullptr,
+        status,
+      );
+      return (id, status.value);
+    } finally {
+      calloc.free(status);
+      if (d != null) calloc.free(d);
+      if (s != null) calloc.free(s);
+    }
+  }
+}
+
+/// A `WxScanStatus` from [_CreatePathRequest], as something worth reading.
+String _pathTrouble(int status) => switch (status) {
+      1 => 'a path is not valid text',
+      2 => 'a file could not be read',
+      4 => 'a file was read but is not weights this build can load',
+      _ => 'the scanner could not be created',
+    };
 
 /// Which setting a [_ConfigRequest] applies.
 enum _Setting { scaleFactor, confidenceThreshold, nmsThreshold }

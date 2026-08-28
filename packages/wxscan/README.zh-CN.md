@@ -214,8 +214,24 @@ final outcome = await WxScanner.use((scanner) => scanner.scanImage(bytes));
 ## 模型
 
 TFLite 权重以字节传进来，通常来自 asset。两个都传 null 就是无模型模式；加载失败也会
-退回到这个模式，不抛异常。这个模式下解码照常，掉的是小码和远处码的检出率——那正是 CNN
-阶段负责的部分。`hasModels` 告诉你现在是哪种模式。
+退回到这个模式，不抛异常。这个模式下解码照常，掉的是小码和远处码的检出率，也就是 CNN
+阶段贡献的那部分。`hasModels` 告诉你现在是哪种模式。
+
+权重在磁盘上就改传路径，文件由原生库在 worker isolate 上读，那一兆字节不会落在调用它
+的 isolate 上：
+
+```dart
+final scanner = await WxScanner.create(
+  detectModelPath: '${dir.path}/detect.tflite',
+  srModelPath: '${dir.path}/sr.tflite',
+);
+```
+
+这是给下载下来或者拷到某处的权重用的——**Flutter 的 asset 不是文件**。asset 在应用包
+里面，没有可打开的路径，`assets/models/detect.tflite` 在这里什么都不指；那种情况用
+`rootBundle` 读出字节传进去。一个模型只能用其中一种方式给。路径读不出来的行为和权重
+加载不了完全一样，日志里会写是哪个文件、为什么。浏览器上传路径会抛 `UnsupportedError`：
+那里没有文件系统可读。
 
 ## 构建钩子
 
