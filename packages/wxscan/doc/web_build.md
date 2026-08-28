@@ -60,10 +60,11 @@ of it as by the version, and those change while the version stays put. Two
 runtimes that differ only in patches therefore get different tags rather than
 sharing one.
 
-The pin still names a `tflite-<version>-p<patch>` release of wxscan-rs, which
-is where this runtime was built before it moved out. It moves to the new
-repository's releases the next time `tool/stamp_web.sh` runs: a lock file
-follows a release rather than announcing one.
+`tool/web.lock` already names that repository and a `v2.17.1-b1` release of it,
+which does not exist yet: the checksums beside it are the bytes wxscan-rs
+published from the same sources before the move. `tool/stamp_web.sh` against
+the first real release is what makes the file true again, and until it runs
+`fetch_web` cannot find the runtime.
 
 ## Building the scanner yourself
 

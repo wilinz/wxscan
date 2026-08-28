@@ -32,20 +32,14 @@ tag=$(value_of TFLITE_TAG "${PKG_DIR}/tool/web.lock")
 # <tensorflow-version>-b<revision>. The revision is the build repository's own —
 # it counts the patches applied on top of that TensorFlow, which change while
 # the version stays put — so only the version is compared.
-#
-# tflite-<version>-p<patch> is the same thing under its old name, from when the
-# runtime was built in wxscan-rs rather than in a repository of its own. It is
-# accepted until the pin moves to a release of the new one, and can go then.
 case "$tag" in
-  v*-b*|tflite-v*-p*) ;;
+  v*-b*) ;;
   *) fail "TFLITE_TAG is '$tag', which is not
                     <version>-b<revision>. web.lock is written by
                     tool/stamp_web.sh; do not edit it by hand." ;;
 esac
 
-web=${tag#tflite-}
-web=${web%-b*}
-web=${web%-p*}
+web=${tag%-b*}
 
 if [ "$pinned" != "$web" ]; then
   fail "the browser fetches TensorFlow $web ($tag), but this package pins
