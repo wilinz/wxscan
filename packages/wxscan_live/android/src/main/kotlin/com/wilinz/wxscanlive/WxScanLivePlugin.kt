@@ -244,6 +244,13 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         eventChannel.setStreamHandler(null)
         sizeChannel.setStreamHandler(null)
         teardown()
+        // The end of this registry, and the only place that says so. Guarded
+        // for the same reason as the move in [teardown]: a plugin whose
+        // camera was never opened has a registry still at INITIALIZED, and
+        // androidx refuses that move rather than ignoring it.
+        if (lifecycleRegistry.currentState.isAtLeast(Lifecycle.State.CREATED)) {
+            lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+        }
         // After teardown, never before: it posts the scanner's release onto
         // `worker`, and shutdown() lets what is already queued run. These are
         // two non-daemon threads per plugin instance, so a host that attaches
@@ -1040,7 +1047,21 @@ class WxScanLivePlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         previewSurface = null
         try { textureEntry?.release() } catch (_: Throwable) {}
         textureEntry = null
-        lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+        // Down to CREATED, not DESTROYED, and only from at least CREATED.
+        //
+        // Two things androidx will not do. It refuses INITIALIZED to
+        // DESTROYED outright — "State must be at least CREATED to move to
+        // DESTROYED" — which is the state this registry is in whenever the
+        // camera was never opened, and detaching the engine tears down
+        // regardless. And a registry that reaches DESTROYED cannot be brought
+        // back up, so the next camera would have nothing to bind to.
+        //
+        // CREATED is below STARTED, which is what unbinds the use cases, and
+        // it is a state the next bind can move up from. DESTROYED is said
+        // once, in [onDetachedFromEngine], where the plugin really is going.
+        if (lifecycleRegistry.currentState.isAtLeast(Lifecycle.State.CREATED)) {
+            lifecycleRegistry.currentState = Lifecycle.State.CREATED
+        }
         // Never reused: the ids only go up, so a close that arrives late
         // names a session that has ended rather than the next one.
         sessionId = 0L
