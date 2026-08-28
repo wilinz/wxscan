@@ -7,14 +7,16 @@ issue_tracker: https://github.com/wilinz/wxscan/issues
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
-  # Not the plugin template's 3.19: below 3.44 this package white-screens on
-  # rotation, and no version of it can fix that. Engines up to 3.41 gate the
-  # viewport metrics behind an AtomicBoolean that stops them reaching Dart on a
-  # resize; rotation is a resize, so Dart stays on the old orientation for good
-  # and the window's own colour shows through. The fix is flutter/flutter
-  # #182326, first released in 3.44.0. A live scanner is rotated constantly, so
-  # this is the floor, not a preference.
-  flutter: ">=3.44.0"
+  # Not the plugin template's 3.19. The floor is the build hook that produces
+  # the native library: hooks and code_assets both want Dart 3.10, and 3.38.1
+  # is the first stable Flutter that ships it as a release rather than a beta
+  # build. Below this the package does not build at all.
+  #
+  # Android wants 3.44, for a rotation bug the README explains. That one is a
+  # recommendation and not this constraint: everything but rotation works below
+  # it, and holding back callers on other platforms for an Android engine bug
+  # is not this package's call to make.
+  flutter: ">=3.38.1"
 
 dependencies:
   flutter_web_plugins:

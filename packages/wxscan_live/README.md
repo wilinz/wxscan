@@ -345,6 +345,20 @@ differs:
 | macOS | AVFoundation, 10.15+ |
 | Web | `getUserMedia`; see [The browser](#the-browser) |
 
+Flutter 3.38.1 or newer, which is where the build hook that produces the native
+library first works.
+
+**On Android, use 3.44 or newer.** Engines up to 3.41 gate viewport metrics
+behind a flag that stops them reaching Dart on a resize. A rotation is a resize,
+so Dart stays on the previous orientation for good, and the part of the window
+the old layout no longer fills shows through as blank — a white screen after
+turning the phone. Nothing this package does can reach that: the metrics are
+correct inside `FlutterView` and never leave the engine. The fix is
+[flutter/flutter#182326](https://github.com/flutter/flutter/pull/182326),
+released in 3.44.0. It is left out of the pubspec constraint because everything
+but rotation works below it, and an iOS-only application should not be held back
+by an Android engine bug.
+
 ## The native library
 
 Nothing native is built here. The scanner comes from

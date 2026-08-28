@@ -287,6 +287,16 @@ worker 里跑，所以解码不卡页面。方法和手机上完全一样，区�
 | macOS | AVFoundation，10.15+ |
 | Web | `getUserMedia`，见[浏览器](#浏览器) |
 
+Flutter 要 3.38.1 或更新，那是产出原生库的那个构建钩子最早能用的版本。
+
+**Android 上请用 3.44 或更新。** 3.41 及更早的引擎里有个门控，resize 时不把 viewport
+metrics 送给 Dart。转屏就是一次 resize，于是 Dart 永远停在上一个朝向，旧布局不再填满的
+那块窗口就露出来，表现为转完屏后的一片白。这件事这个包够不着：`FlutterView` 内部的值
+一直是对的，只是出不了引擎。修复是
+[flutter/flutter#182326](https://github.com/flutter/flutter/pull/182326)，进的是 3.44.0。
+没有写进 pubspec 的版本约束里，因为除了转屏别的都能用，也不该为一个 Android 的引擎 bug
+拦住只发 iOS 的应用。
+
 ## 原生库
 
 这里不编任何原生代码。扫描器来自
