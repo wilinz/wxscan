@@ -4,6 +4,12 @@
 
 [`wxscan_live`](../) 插件和 [`wxscan`](../../wxscan) 的演示应用。
 
+<img src="https://raw.githubusercontent.com/wilinz/wxscan/main/docs/demo.webp" width="300"
+     alt="一帧里两个二维码都被框出，点开其中一个显示解出的中文文本，按 UTF-8 读取。">
+
+*就是这个应用，跑在手机上：一帧里两个码，其中一个是转过的，以及点开那个标记之后
+的结果。*
+
 这两个包提供的三条路径它都覆盖了：
 
 - **实时扫码**：相机预览，检测到的码标出来，还有闪光灯、变焦和分辨率切换。

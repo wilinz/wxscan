@@ -5,6 +5,13 @@
 Demo for the [`wxscan`](../) plugin and
 [`wxscan`](../../wxscan).
 
+<img src="https://raw.githubusercontent.com/wilinz/wxscan/main/docs/demo.webp" width="300"
+     alt="Two QR codes in one camera frame, each marked; tapping one opens its decoded
+     text, a Chinese payload read as UTF-8.">
+
+*This application, on a phone: two codes in one frame, one of them turned, and
+the result for the marker that was tapped.*
+
 It covers the three paths the packages provide:
 
 - **Live scanning** — the camera preview with detected codes marked, torch and

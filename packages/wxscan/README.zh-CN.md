@@ -9,6 +9,12 @@ Flutter 的二维码解码，底层是 `wechat_qrcode` 算法的 Rust 移植：C
 [`wxscan_live`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan_live)，
 它在原生侧驱动相机，从 Swift 和 Kotlin 调本包的原生库。
 
+<img src="https://raw.githubusercontent.com/wilinz/wxscan/main/docs/demo.webp" width="300"
+     alt="一帧里两个二维码都被框出，点开其中一个显示解出的中文文本，按 UTF-8 读取。">
+
+*从笔记本屏幕上一次读到两个码。真正在解码的是这个包的原生库，它前面那台相机是
+`wxscan_live`。*
+
 它是纯 Dart 包，不是 Flutter 插件：原生库由
 [构建钩子](https://dart.dev/tools/hooks) 编译和打包，所以在 `dart run`、`dart test`
 下和在 Flutter 应用里一样能用，也没有平台构建文件要维护。

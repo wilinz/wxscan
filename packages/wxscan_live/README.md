@@ -14,11 +14,12 @@ To decode a still image instead, use
 [`wxscan`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan), which exposes the same
 scanner to Dart.
 
-<img src="https://raw.githubusercontent.com/wilinz/wxscan/main/docs/demo.webp" width="300" alt="Two QR codes in one camera frame, each marked;
-tapping one opens its decoded text, a Chinese payload read as UTF-8.">
+<img src="https://raw.githubusercontent.com/wilinz/wxscan/main/docs/demo.webp" width="300"
+     alt="Two QR codes in one camera frame, each marked; tapping one opens its decoded
+     text, a Chinese payload read as UTF-8.">
 
-*Two codes in one frame, one of them turned, read off a laptop screen — then the
-one that was tapped.*
+*Two codes in one frame, one of them turned, read off a laptop screen — then
+the one that was tapped.*
 
 **[Try it in a browser](https://wilinz.github.io/wxscan/)** — the example
 application, built for the web and running the same Rust scanner as WebAssembly.

@@ -10,6 +10,13 @@ for live scanning use
 [`wxscan_live`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan_live), which drives the camera
 natively and calls this package's native library from Swift and Kotlin.
 
+<img src="https://raw.githubusercontent.com/wilinz/wxscan/main/docs/demo.webp" width="300"
+     alt="Two QR codes in one camera frame, each marked; tapping one opens its decoded
+     text, a Chinese payload read as UTF-8.">
+
+*Reading two codes at once off a laptop screen. The scanner doing the reading
+is this package’s native library; the camera in front of it is `wxscan_live`.*
+
 It is a plain Dart package, not a Flutter plugin: the native library is built
 and bundled by a [build hook](https://dart.dev/tools/hooks), so it works under
 `dart run` and `dart test` as well as in a Flutter application, and there are no
