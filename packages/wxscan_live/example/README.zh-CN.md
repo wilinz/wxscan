@@ -27,6 +27,12 @@ flutter run              # -d macos、连上的设备，等等
 
 第一次要编 Rust、下载 TFLite 库，得等几分钟；之后是增量的。
 
+首次运行时权重会从 bundle 拷进应用沙箱，之后每次启动都按路径打开——`WxScanner.create(detectModelPath: ...)`
+收的就是路径，而这份拷贝存在的理由也正是：Flutter 的 asset 没有路径。`assets/models/model-version.txt`
+记着每个权重应该是什么样，所以换了新权重的构建会重新拷，而不是接着用旧的。拷贝本身用
+`large_file_handler`，它在 Android 和 iOS 上原生流式搬运，那一兆不经过 Dart；它使不上劲的
+平台就在这边把 asset 读出来分块写。见 [`lib/model_files_io.dart`](lib/model_files_io.dart)。
+
 TFLite 模型放在 `assets/models/`。这份 checkout 里有，发到 pub.dev 的包里没有：一个
 example 的 1.1 MB 权重，是每次 `pub get` `wxscan_live` 都要付的 1.1 MB。没有它也照样
 编、照样跑，只是退回到纯图像处理这条路，首页会把这件事说出来，并指向

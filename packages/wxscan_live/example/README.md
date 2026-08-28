@@ -35,6 +35,16 @@ flutter run              # -d macos, an attached device, ...
 The first build compiles the Rust sources and downloads the TFLite library, so
 it takes a few minutes; later builds are incremental.
 
+On the first run the weights are copied out of the bundle into the
+application's sandbox, and every run after that opens them by path — which is
+what `WxScanner.create(detectModelPath: ...)` takes, and why the copy exists at
+all: a Flutter asset has no path. `assets/models/model-version.txt` records
+what each weight should be, so a build that ships new ones copies again rather
+than opening the old. The copying itself is `large_file_handler`, which streams
+it natively on Android and iOS without the megabyte passing through Dart; where
+that will not work the asset is read and written in chunks here. See
+[`lib/model_files_io.dart`](lib/model_files_io.dart).
+
 The TFLite models go in `assets/models/`. This checkout has them; the package
 published to pub.dev does not, because 1.1 MB of an example's weights is 1.1 MB
 every `pub get` of `wxscan_live` pays for. A copy without them still builds and

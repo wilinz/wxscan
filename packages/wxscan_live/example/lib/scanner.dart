@@ -8,6 +8,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:wxscan_live/wxscan_live.dart';
 import 'package:wxscan/wxscan.dart';
 
+import 'model_files.dart';
+
 /// A file no decoder on this device could open.
 class UnreadableImage implements Exception {
   const UnreadableImage();
@@ -29,10 +31,14 @@ class Scanner {
   static WxScanner? _scanner;
   static bool _nnEnabled = false;
 
-  /// Model bytes. Kept only for the fallback below — the camera normally
-  /// borrows the scanner these were already loaded into.
+  /// Model bytes, in a browser. Kept only for the fallback below — the camera
+  /// normally borrows the scanner these were already loaded into.
   static Uint8List? detectModel;
   static Uint8List? srModel;
+
+  /// The same weights as files, everywhere else. See [init].
+  static String? detectModelPath;
+  static String? srModelPath;
 
   /// Whether the CNN detector is active, which requires the models to load.
   static bool get nnEnabled => _nnEnabled;
@@ -66,8 +72,30 @@ class Scanner {
   static Future<bool> init() async {
     if (_scanner != null) return _nnEnabled;
     try {
-      detectModel = await _bytes('assets/models/detect.tflite');
-      srModel = await _bytes('assets/models/sr.tflite');
+      if (kIsWeb) {
+        // No filesystem behind a browser, so the bytes it is. This is the
+        // path the live demo takes.
+        detectModel = await _bytes('assets/models/detect.tflite');
+        srModel = await _bytes('assets/models/sr.tflite');
+      } else {
+        // Copied out of the bundle once and opened by path from then on: a
+        // Flutter asset has no path of its own, and every run after the first
+        // hands the scanner two strings instead of two megabytes. See
+        // model_files_io.dart for when the copy is made again.
+        final (detect, sr) = await installWeights(_bytes);
+        detectModelPath = detect;
+        srModelPath = sr;
+        // rootBundle keeps what it has loaded for the life of the process,
+        // and the scanner reads the copies rather than the assets from here
+        // on. Android and the Apple platforms never load the weights through
+        // it — the plugin streams them natively — but Windows and Linux fall
+        // back to plain Dart and do, so this is where that megabyte is let go
+        // of. Evicting a key that was never loaded costs nothing.
+        rootBundle.evict('assets/models/detect.tflite');
+        rootBundle.evict('assets/models/sr.tflite');
+        rootBundle.evict('assets/models/model-version.txt');
+        _log('weights at $detect');
+      }
     } on Object catch (e) {
       // Worth saying which asset and why. Swallowing this leaves the whole
       // application quietly on the fallback engine, and the only visible
@@ -83,10 +111,14 @@ class Scanner {
           : 'the weights are there but did not load: $e';
       detectModel = null;
       srModel = null;
+      detectModelPath = null;
+      srModelPath = null;
     }
     _scanner = await WxScanner.create(
       detectModel: detectModel,
       srModel: srModel,
+      detectModelPath: detectModelPath,
+      srModelPath: srModelPath,
     );
     // The label reports the detector, which is what changes the detection rate.
     _nnEnabled = _scanner!.hasDetector;

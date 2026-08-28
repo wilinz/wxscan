@@ -156,8 +156,13 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         resolution: _resolution,
       );
       await controller.initialize(
+        // Only reached when init() failed and there is no scanner to lend, so
+        // the camera builds its own. Bytes in a browser, paths everywhere
+        // else; exactly one pair is set.
         detectModel: Scanner.detectModel,
         srModel: Scanner.srModel,
+        detectModelPath: Scanner.detectModelPath,
+        srModelPath: Scanner.srModelPath,
       );
       if (kDebugMode) {
         unawaited(Scanner.selfTestCameraPath());

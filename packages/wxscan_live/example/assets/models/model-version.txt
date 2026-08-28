@@ -1,0 +1,12 @@
+# What the bundled weights are, so the copy in the sandbox can be checked
+# against them without reading a megabyte to find out it was fine.
+#
+# See lib/model_files_io.dart. Replace a weight file and this has to move with
+# it: a size that no longer matches is what makes the copy be made again, and
+# the version is here to move as well when it does, so the reason is legible in
+# a diff rather than only in a number.
+#
+# name<space>bytes, and lines beginning with # are comments.
+version 1
+detect.tflite 1024676
+sr.tflite 71576

@@ -15,6 +15,12 @@ dependencies:
   # Opening a decoded link, and the addresses on the about screen.
   url_launcher: ^6.3.0
   image: ^4.2.0
+  # The weights are copied out of the bundle into the sandbox once, and opened
+  # by path after that; see lib/model_files_io.dart.
+  path_provider: ^2.1.4
+  # Does that copy without the bytes passing through Dart: AssetManager into a
+  # FileOutputStream on Android, InputStream to OutputStream on Apple.
+  large_file_handler: ^0.5.0
   wxscan_live:
     path: ../
   wxscan:
