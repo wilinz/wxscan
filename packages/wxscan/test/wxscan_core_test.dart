@@ -461,26 +461,20 @@ void main() {
       );
     });
 
-    test('a HEIC decodes through the platform, where there is one', () async {
-      // The built-in decoders are png, jpeg and gif; HEIC is what an Apple
-      // photo library is mostly made of, and it arrives here only because
-      // WxScanner.create lends the scanner the system's decoder. Nothing else
-      // in the package can read these bytes.
+    test('a HEIC decodes, by whichever route this platform has', () async {
+      // HEIC is what an Apple photo library is mostly made of, and it is not
+      // one of the built-in png, jpeg and gif. Two different things read it:
+      // on Apple platforms the system decoder, which WxScanner.create lends
+      // the scanner, and everywhere else heif-oxide, compiled into the crate
+      // for exactly those targets. The answer has to be the same either way,
+      // orientation included - this test used to assert that anything but
+      // Apple threw unsupportedFormat, which was true of the Dart side alone
+      // and had never been run where the Rust one answers.
       final heic = await File('test/data/upright.heic').readAsBytes();
-      if (!Platform.isMacOS && !Platform.isIOS) {
-        // Elsewhere there is nothing lent yet, and the right answer is still
-        // the honest one rather than a decode.
-        await expectLater(
-          scanner.scanImage(heic),
-          throwsA(isA<PictureUnreadable>().having((e) => e.failure, 'failure',
-              PictureReadFailure.unsupportedFormat)),
-        );
-        return;
-      }
       final outcome = await scanner.scanImage(heic);
       expect(outcome.results, isNotEmpty);
       // The dimensions of the png it was converted from: the orientation is
-      // applied by the platform exactly as the built-in path applies it.
+      // applied exactly as the built-in path applies it.
       expect((outcome.width, outcome.height), (320, 460));
     });
 

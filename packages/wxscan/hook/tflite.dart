@@ -116,6 +116,19 @@ Future<TfliteLibrary> fetchTflite({
   var out = File.fromUri(cache.uri.resolve('$slug/$libName'));
   _extractOne(archive, out, (name) => name.split('/').last == libName);
 
+  // MSVC links against the import library rather than the DLL, and stops at
+  // LNK1181 without ever opening the DLL if it is missing. Nothing loads this
+  // file at run time and it is not a code asset; it only has to be in the
+  // directory build.rs hands to the linker, which is this one.
+  if (os == OS.windows) {
+    const importLib = 'tensorflowlite_c.lib';
+    _extractOne(
+      archive,
+      File.fromUri(cache.uri.resolve('$slug/$importLib')),
+      (name) => name.split('/').last == importLib,
+    );
+  }
+
   // The macOS archive is universal; each build gets the slice it asked for.
   // Its install name is already @rpath/libtensorflowlite_c.dylib, which the
   // Dart tooling reads to rewrite the dependency path.
