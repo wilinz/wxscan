@@ -31,5 +31,19 @@ fn main() {
         }
     } else {
         println!("cargo:rustc-link-lib=dylib={name}");
+
+        // ELF records the dependency by name and searches for it at load time,
+        // and the Dart tooling's answer to that - both libraries copied into
+        // one directory - only helps if this one is told to look beside
+        // itself. Without it a Linux build links, and then dlopen fails with
+        // `libtensorflowlite_c.so: cannot open shared object file`.
+        //
+        // Not needed elsewhere: Mach-O carries an install name the tooling
+        // rewrites, Windows searches the loading module's directory, and an
+        // Android package puts every library in one directory the loader
+        // already knows.
+        if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
+            println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
+        }
     }
 }

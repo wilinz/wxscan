@@ -36,6 +36,16 @@ void main(List<String> args) async {
         'TFLITE_LIB_DIR': tflite.directory.path,
         'TFLITE_LIB_NAME': tflite.linkName,
         'TFLITE_LINK_STATIC': tflite.isStatic ? '1' : '0',
+        // Rust's Apple targets carry deployment targets from when they were
+        // added - iOS 10 for aarch64-apple-ios - and nothing here would say
+        // so: the link simply fails on `___chkstk_darwin`, a symbol libSystem
+        // grew in iOS 13 that TFLite's objects, built for 13, reference. The
+        // version Flutter is building for is right here in the configuration,
+        // and rustc reads these two variables.
+        if (code.targetOS == OS.iOS)
+          'IPHONEOS_DEPLOYMENT_TARGET': '${code.iOS.targetVersion}',
+        if (code.targetOS == OS.macOS)
+          'MACOSX_DEPLOYMENT_TARGET': '${code.macOS.targetVersion}',
       },
     ).run(input: input, output: output);
 
