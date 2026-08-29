@@ -1,0 +1,197 @@
+# The tests pass and the applications still build.
+#
+# Everything native in this repository is produced by one Dart build hook, and
+# a hook runs as part of `dart test`, `flutter test` and `flutter build` alike.
+# That is what makes this file short: there is no separate build to invoke, so
+# running the tests on a runner already compiles the Rust and links the TFLite
+# library for that host, and building the example compiles it for the phone.
+#
+# What each job here is for:
+#
+#   test  the scanner itself, on all three desktops. The tests are not mocks —
+#         they load the native library through the code asset and decode real
+#         images — so a green run means the whole chain worked on that host:
+#         fetch the TFLite archive, verify its checksum, unpack it, link Rust
+#         against it, and load it at run time.
+#   live  the camera package and the example, whose tests decode the three
+#         committed pictures through the same path the application uses.
+#   app   the shipped artifacts: an Android APK, an iOS build and a macOS
+#         application. Nothing about a plugin's Gradle, CocoaPods or code
+#         asset wiring shows up in a host test.
+#
+# The web is not here on purpose: demo.yml builds and publishes it on every
+# push to main, `flutter build web` below covers pull requests, and the browser
+# artifacts have their own check in that workflow.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch wins; these jobs take tens of minutes and
+# there is no point finishing a run nobody will read.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      # One desktop failing is worth knowing about while the others finish:
+      # the interesting failures here are platform-specific by nature.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: wxscan }
+
+      # The Rust crate's manifest names these as siblings of the repository,
+      # the same layout a developer has, and cargo cannot resolve without them.
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/wxscan-rs, path: wxscan-rs }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/cvlite, path: cvlite }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/wxing, path: wxing }
+
+      # No Rust toolchain is installed here: rustup ships on every runner, the
+      # hook invokes it inside rust/, and rust-toolchain.toml pins the compiler
+      # and the targets, so the first cargo call installs exactly what a
+      # developer's machine has. Nothing in CI gets to choose a version.
+      #
+      # The cache is for the crates.io registry and the sources under it. The
+      # object files are not reused: the hook builds into .dart_tool, which is
+      # per-checkout and gone by the next run.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: wxscan/packages/wxscan/rust
+          shared-key: ${{ matrix.os }}
+
+      # Not pinned, unlike Flutter below. The package's floor is Dart 3.10 and
+      # what matters is that it still builds on what people are installing
+      # today, so this one is deliberately allowed to move.
+      - uses: dart-lang/setup-dart@v1
+        with: { sdk: stable }
+
+      - name: Test the scanner
+        working-directory: wxscan/packages/wxscan
+        run: |
+          dart pub get
+          dart analyze
+          dart test
+
+  live:
+    name: live and example
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: wxscan }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/wxscan-rs, path: wxscan-rs }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/cvlite, path: cvlite }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/wxing, path: wxing }
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: wxscan/packages/wxscan/rust
+          shared-key: ubuntu-latest
+
+      # Pinned, and not below 3.44: earlier engines show a white screen on
+      # rotation, which there is no working around from Dart.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.1
+          channel: stable
+
+      # The camera is stood in for, so these run on the host with no device.
+      - name: Test the camera package
+        working-directory: wxscan/packages/wxscan_live
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      # These ones do decode: three committed pictures through
+      # Scanner.scanImageBytes, the same call both screens make. Which means
+      # the Rust and the TFLite library are built and loaded here too.
+      - name: Test the example
+        working-directory: wxscan/packages/wxscan_live/example
+        run: |
+          flutter pub get
+          flutter test
+
+      # A web build asks the hooks for no code assets, so no Rust is compiled
+      # here. It is the Dart that is being checked: the browser implementation
+      # is conditionally imported and nothing else in this workflow compiles
+      # it. The runtime artifacts the page fetches are demo.yml's business.
+      - name: Build for the browser
+        working-directory: wxscan/packages/wxscan_live/example
+        run: flutter build web --release
+
+  app:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: android, os: ubuntu-latest }
+          - { target: ios, os: macos-latest }
+          - { target: macos, os: macos-latest }
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: wxscan }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/wxscan-rs, path: wxscan-rs }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/cvlite, path: cvlite }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/wxing, path: wxing }
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: wxscan/packages/wxscan/rust
+          shared-key: ${{ matrix.os }}-${{ matrix.target }}
+
+      # The Android build wants a JDK of its own; the Apple ones use Xcode as
+      # the runner has it.
+      - if: matrix.target == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.1
+          channel: stable
+
+      # Release builds, because that is what ships and because the differences
+      # are exactly where native code breaks: link-time optimisation, stripped
+      # symbols, and on Android three ABIs instead of the one a debug build on
+      # a connected device would produce.
+      #
+      # Signing is nobody's business here — the example signs its release with
+      # the debug keys, and the iOS build is told not to sign at all.
+      - name: Build
+        working-directory: wxscan/packages/wxscan_live/example
+        run: |
+          flutter pub get
+          case "${{ matrix.target }}" in
+            android) flutter build apk --release ;;
+            ios)     flutter build ios --release --no-codesign ;;
+            macos)   flutter build macos --release ;;
+          esac
