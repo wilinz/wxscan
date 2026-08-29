@@ -1,28 +1,22 @@
-# Pinned TFLite C library artifacts, used by fetch_tflite.sh and .ps1.
+# Pinned TFLite C library archives, used by hook/tflite.dart.
 #
-# To upgrade, run: tool/update_tflite_lock.sh <litert-version> <desktop-version>
-# which downloads each artifact and rewrites the checksums below.
+# To upgrade, run: tool/update_tflite_lock.sh [tag]
+# which downloads each archive and rewrites the checksums below.
 #
-# Any entry can be overridden from the environment with the same name, e.g.
-#   LITERT_VERSION=2.3.0 LITERT_SHA256=... tool/fetch_tflite.sh android
-#
-# Android comes from Google Maven (com.google.ai.edge.litert:litert), the
-# official distribution. There is no official desktop build, so those come from
-# github.com/tphakala/tflite_c, which builds the TensorFlow sources in CI.
+# Everything comes from one release of one repository — one tag, nine archives,
+# one TensorFlow version — built from the TensorFlow sources by that
+# repository's build.sh in CI, so Android, iOS and the desktops link the same
+# runtime. The tag names the TensorFlow version and that repository's build
+# revision, because both decide the bytes.
 
-LITERT_VERSION=2.2.0
-LITERT_SHA256=624518d72f8a249711a19e9901f480e74f823ca7818260a739cb2c023024807c
-
-# The iOS framework, from the same release channel CocoaPods pulls from. The
-# URL carries a build hash, so it is pinned whole rather than assembled from a
-# version number.
-IOS_VERSION=2.17.0
-IOS_URL=https://dl.google.com/tflite-release/ios/prod/tensorflow/lite/release/ios/release/32/20240729-115310/TensorFlowLiteC/2.17.0/0c10b3543e01f547/TensorFlowLiteC-2.17.0.tar.gz
-IOS_SHA256=9667b476015f136e5b332ce040e12822c4ac6d5c58947882ddc809cdff0fb99e
-
-DESKTOP_VERSION=v2.17.1
-DESKTOP_REPO=tphakala/tflite_c
-SHA_darwin_arm64=c183be044a6ad0c6976a6ddd2fafb9d723b03c46c9f06870ab9a55201d71c2d0
-SHA_linux_amd64=8fe21ceb2999128c797f05c8660d5b1d25850b15e1e8c531e8d8e9e050b3fe6f
-SHA_linux_arm64=665fdfc5372be7eedd8439beef5b5572c4b502c8382087ebf481351599163152
-SHA_windows_amd64=3bc513b1c90afc34d810a5a6db77c64f96aeb005c56ddd8053306810d79e2979
+TFLITE_VERSION=v2.17.1-b3
+TFLITE_REPO=wilinz/litert-builds
+SHA_android_arm64=125b364bf65572607f7a3cb632991cc7daa1ff8f41a1c134b32d987e6a44db55
+SHA_android_arm=86a1beed8b3f3784cc8977f1a946895683eb35b15dcc26cd730be038c7221c00
+SHA_android_x64=2f9ee56030a308445ad0ea37b4b0ba6b1d53f29c0a88b9d996292a1df1af65b4
+SHA_ios_device=519646d7e7d3ed36f3932a68af6896556d06bb172589ae8ca7926f02c710aed5
+SHA_ios_simulator=3fac5ea54c652b2fbae176a90440bfc71cb5ed23a2ce7f61df9b1d606042c54b
+SHA_darwin_universal=9925233ee21d4c1e3c9d9265892dfc4110427f2ae7673c9f73fe0c28f20feb03
+SHA_linux_amd64=200bbc4caa52ef52fa00e76cd6ba50d8eafb84d64c207c22f5416d6e350d56bb
+SHA_linux_arm64=4d1b64be2f6009932ca56c90f4ae9e01cf101c5d928b31dbb4f784ebf10fad85
+SHA_windows_amd64=acbaf38ccd0c14414c89160e01e94115b383a402994a3d36c8e723bb4267366f

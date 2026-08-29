@@ -4,9 +4,9 @@
 #
 # Two files pin it, and nothing connects them on its own:
 #
-#   tool/tflite.lock  DESKTOP_VERSION — the runtime Android, iOS and the
+#   tool/tflite.lock  TFLITE_VERSION — the release Android, iOS and the
 #                     desktops link against
-#   tool/web.lock     TFLITE_TAG      — the release a browser fetches
+#   tool/web.lock     TFLITE_TAG     — the release a browser fetches
 #
 # Move one and not the other and a browser runs a different runtime, against
 # the same .tflite weights, from everything else. That is silent at run time:
@@ -23,15 +23,15 @@ PKG_DIR=$(cd "$(dirname "$0")/.." && pwd)
 value_of() { grep "^$1=" "$2" | head -1 | cut -d= -f2-; }
 fail() { echo "check_tflite_web: $*" >&2; exit 1; }
 
-pinned=$(value_of DESKTOP_VERSION "${PKG_DIR}/tool/tflite.lock")
+pinned=$(value_of TFLITE_VERSION "${PKG_DIR}/tool/tflite.lock")
 tag=$(value_of TFLITE_TAG "${PKG_DIR}/tool/web.lock")
 
-[ -n "$pinned" ] || fail "tflite.lock has no DESKTOP_VERSION"
+[ -n "$pinned" ] || fail "tflite.lock has no TFLITE_VERSION"
 [ -n "$tag" ] || fail "web.lock has no TFLITE_TAG"
 
 # <tensorflow-version>-b<revision>. The revision is the build repository's own —
-# it counts the patches applied on top of that TensorFlow, which change while
-# the version stays put — so only the version is compared.
+# it counts the build changes applied on top of that TensorFlow, which change
+# while the version stays put — so only the version is compared, on both sides.
 case "$tag" in
   v*-b*) ;;
   *) fail "TFLITE_TAG is '$tag', which is not
@@ -40,6 +40,7 @@ case "$tag" in
 esac
 
 web=${tag%-b*}
+pinned=${pinned%-b*}
 
 if [ "$pinned" != "$web" ]; then
   fail "the browser fetches TensorFlow $web ($tag), but this package pins

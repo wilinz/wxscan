@@ -1,11 +1,11 @@
 #!/bin/sh
-# Rewrites tool/tflite.lock for new upstream versions.
+# Rewrites tool/tflite.lock for a new release.
 #
-#   usage: update_tflite_lock.sh [litert-version] [desktop-version]
+#   usage: update_tflite_lock.sh [tag]
 #
-# Each argument defaults to what the lock file already holds, so either half can
-# be upgraded on its own. Every artifact is downloaded and its checksum recorded;
-# nothing is written unless all of them succeed.
+# The tag defaults to what the lock file already holds. Every archive of the
+# release is downloaded and its checksum recorded; nothing is written unless
+# all of them succeed.
 set -eu
 
 PKG_DIR=$(cd "$(dirname "$0")/.." && pwd)
@@ -30,27 +30,31 @@ fetch_sha() {
   sha256_of "$out"
 }
 
-LITERT_VERSION=${1:-$(value_of LITERT_VERSION)}
-DESKTOP_VERSION=${2:-$(value_of DESKTOP_VERSION)}
-DESKTOP_REPO=$(value_of DESKTOP_REPO)
+TAG=${1:-$(value_of TFLITE_VERSION)}
+REPO=$(value_of TFLITE_REPO)
+base="https://github.com/${REPO}/releases/download/${TAG}"
 
-litert_sha=$(fetch_sha "https://dl.google.com/dl/android/maven2/com/google/ai/edge/litert/litert/${LITERT_VERSION}/litert-${LITERT_VERSION}.aar")
-
-base="https://github.com/${DESKTOP_REPO}/releases/download/${DESKTOP_VERSION}"
-darwin_arm64=$(fetch_sha "${base}/tflite_c_${DESKTOP_VERSION}_darwin_arm64.tar.gz")
-linux_amd64=$(fetch_sha "${base}/tflite_c_${DESKTOP_VERSION}_linux_amd64.tar.gz")
-linux_arm64=$(fetch_sha "${base}/tflite_c_${DESKTOP_VERSION}_linux_arm64.tar.gz")
-windows_amd64=$(fetch_sha "${base}/tflite_c_${DESKTOP_VERSION}_windows_amd64.zip")
+android_arm64=$(fetch_sha "${base}/tflite_c_${TAG}_android_arm64.tar.gz")
+android_arm=$(fetch_sha "${base}/tflite_c_${TAG}_android_arm.tar.gz")
+android_x64=$(fetch_sha "${base}/tflite_c_${TAG}_android_x64.tar.gz")
+ios_device=$(fetch_sha "${base}/tflite_c_${TAG}_ios_device.tar.gz")
+ios_simulator=$(fetch_sha "${base}/tflite_c_${TAG}_ios_simulator.tar.gz")
+darwin_universal=$(fetch_sha "${base}/tflite_c_${TAG}_darwin_universal.tar.gz")
+linux_amd64=$(fetch_sha "${base}/tflite_c_${TAG}_linux_amd64.tar.gz")
+linux_arm64=$(fetch_sha "${base}/tflite_c_${TAG}_linux_arm64.tar.gz")
+windows_amd64=$(fetch_sha "${base}/tflite_c_${TAG}_windows_amd64.zip")
 
 tmp="${LOCK}.new"
 {
-  sed -n '1,/^$/p' "$LOCK" | sed '/^LITERT_VERSION=/,$d'
-  echo "LITERT_VERSION=${LITERT_VERSION}"
-  echo "LITERT_SHA256=${litert_sha}"
-  echo
-  echo "DESKTOP_VERSION=${DESKTOP_VERSION}"
-  echo "DESKTOP_REPO=${DESKTOP_REPO}"
-  echo "SHA_darwin_arm64=${darwin_arm64}"
+  sed -n '1,/^$/p' "$LOCK" | sed '/^TFLITE_VERSION=/,$d'
+  echo "TFLITE_VERSION=${TAG}"
+  echo "TFLITE_REPO=${REPO}"
+  echo "SHA_android_arm64=${android_arm64}"
+  echo "SHA_android_arm=${android_arm}"
+  echo "SHA_android_x64=${android_x64}"
+  echo "SHA_ios_device=${ios_device}"
+  echo "SHA_ios_simulator=${ios_simulator}"
+  echo "SHA_darwin_universal=${darwin_universal}"
   echo "SHA_linux_amd64=${linux_amd64}"
   echo "SHA_linux_arm64=${linux_arm64}"
   echo "SHA_windows_amd64=${windows_amd64}"

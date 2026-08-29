@@ -241,15 +241,13 @@ final scanner = await WxScanner.create(
 
 CNN 推理用 TFLite C 库，构建时下载，不随包携带。每个产物都在 `tool/tflite.lock` 里用
 版本号加 SHA-256 钉死，对不上就构建失败。升级用
-`tool/update_tflite_lock.sh <litert-version> <desktop-version>`，它会重新下载并改写
-校验和。改那个文件是指向另一个构建的**唯一**办法：钩子的运行器会清空环境变量，你在
-那里设什么都不算数。
+`tool/update_tflite_lock.sh [tag]`，它会重新下载并改写校验和。改那个文件是指向另一个
+构建的**唯一**办法：钩子的运行器会清空环境变量，你在那里设什么都不算数。
 
 | 平台 | 来源 |
 |---|---|
-| Android | Google Maven，`com.google.ai.edge.litert:litert` |
-| iOS | TensorFlowLiteC pod 用的那个发布渠道。是静态 framework，所以它被链进 Rust 库里，不是并排放着 |
-| macOS、Linux、Windows | 预编译产物。官方没有桌面端分发，仓库地址写在 `tflite.lock` 里 |
+| 所有平台 | 同一个仓库的同一个 release，CI 从 TensorFlow 源码构建——tag 写在 `tflite.lock` 里，Android、iOS 和桌面链接的是同一个 TensorFlow |
+| iOS | 静态归档，所以它被链进 Rust 库里，不是并排放着 |
 
 下载会缓存在钩子的共享输出目录里，只有第一次构建付这个代价。那次还要编 Rust，得等几
 分钟；之后是增量的。

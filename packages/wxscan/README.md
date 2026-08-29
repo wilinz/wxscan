@@ -276,18 +276,17 @@ both as code assets. The Dart tooling then places them together and rewrites the
 dependency between them, so nothing has to arrange an rpath.
 
 CNN inference uses the TFLite C library, which is downloaded at build time
-rather than shipped here. Every artifact is pinned by version and SHA-256 in
+rather than shipped here. Every archive is pinned by version and SHA-256 in
 `tool/tflite.lock`; a mismatch fails the build. To upgrade, run
-`tool/update_tflite_lock.sh <litert-version> <desktop-version>`, which
-re-downloads each artifact and rewrites the checksums. Editing that file is the
-only way to point at a different build: the hook runner scrubs the environment,
-so nothing there is consulted.
+`tool/update_tflite_lock.sh [tag]`, which re-downloads each archive and
+rewrites the checksums. Editing that file is the only way to point at a
+different build: the hook runner scrubs the environment, so nothing there is
+consulted.
 
 | Platform | Source |
 |---|---|
-| Android | Google Maven, `com.google.ai.edge.litert:litert` |
-| iOS | the release channel the TensorFlowLiteC pod serves — a static framework, so it is linked into the Rust library rather than bundled beside it |
-| macOS, Linux, Windows | prebuilt release; there is no official desktop distribution, so the repository is named in `tflite.lock` |
+| every platform | one release of one repository, which builds the TensorFlow sources in CI — the tag is named in `tflite.lock`, and Android, iOS and the desktops link the same TensorFlow |
+| iOS | a static archive, so it is linked into the Rust library rather than bundled beside it |
 
 Downloads are cached in the hook's shared output directory, so only the first
 build pays for them. That build also compiles the Rust sources, which takes a

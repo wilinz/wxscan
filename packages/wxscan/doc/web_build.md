@@ -114,7 +114,7 @@ Then here:
 
 ```sh
 # 3. Raise the pin every other platform reads.
-tool/update_tflite_lock.sh <litert-version> <desktop-version>
+tool/update_tflite_lock.sh v<version>-b<revision>
 
 # 4. Re-pin the browser's two files to the new release.
 tool/stamp_web.sh <scanner-tag> v<version>-b<revision>
@@ -135,8 +135,9 @@ tool/check_tflite_web.sh
 ```
 
 It compares the TensorFlow version inside `TFLITE_TAG` in `tool/web.lock`
-against `DESKTOP_VERSION` in `tool/tflite.lock`, and fails when they have
-drifted apart. CI runs it, so the two cannot reach a release disagreeing.
+against `TFLITE_VERSION` in `tool/tflite.lock` — the build revision each tag
+carries is compared away — and fails when they have drifted apart. CI runs it,
+so the two cannot reach a release disagreeing.
 
 The checksums are not its business: they guard the download, and `fetch_web`
 refuses anything that does not match them.

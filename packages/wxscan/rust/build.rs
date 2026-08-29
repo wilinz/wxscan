@@ -1,10 +1,9 @@
 //! Points the linker at the TFLite C library.
 //!
 //! `hook/build.dart` downloads that library and passes its location and link
-//! name here, because the distributions do not agree on a name (Android's is
-//! LiteRt) and iOS ships a static framework that is linked in rather than
-//! loaded beside us. This crate has one consumer, that hook: the camera plugin
-//! shares the library it produces instead of building its own.
+//! name here, because iOS builds a static archive that is linked in rather
+//! than loaded beside us. This crate has one consumer, that hook: the camera
+//! plugin shares the library it produces instead of building its own.
 fn main() {
     for var in ["TFLITE_LIB_DIR", "TFLITE_LIB_NAME", "TFLITE_LINK_STATIC"] {
         println!("cargo:rerun-if-env-changed={var}");

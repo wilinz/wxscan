@@ -1,14 +1,10 @@
 /// Fetching the prebuilt TFLite C library.
 ///
-/// The library is not kept in the repository: it is 1.5 MB per desktop platform
-/// and 5 MB per Android ABI. Each artifact is pinned by version and SHA-256 in
-/// `tool/tflite.lock`; a mismatch fails the build.
-///
-/// Sources:
-///   Android  Google Maven, com.google.ai.edge.litert:litert (official)
-///   iOS      the release channel CocoaPods pulls from (a static framework)
-///   desktop  CI builds of the TensorFlow sources (there is no official desktop
-///            distribution); the repository is named in tflite.lock
+/// The library is not kept in the repository: it is megabytes per platform.
+/// Everything is fetched from one release — one repository, one tag, nine
+/// archives — built from one TensorFlow version by one script, so Android,
+/// iOS and the desktops link the same runtime, and each archive is pinned by
+/// SHA-256 in `tool/tflite.lock`; a mismatch fails the build.
 library;
 
 import 'dart:convert';
@@ -27,10 +23,9 @@ class TfliteLibrary {
   final File file;
 
   /// The name to pass to the linker, without the `lib` prefix or extension.
-  /// Android's distribution calls it LiteRt rather than tensorflowlite_c.
   final String linkName;
 
-  /// iOS ships a static framework, which is linked into the Rust library
+  /// iOS builds a static archive, which is linked into the Rust library
   /// instead of being bundled beside it.
   final bool isStatic;
 
@@ -71,83 +66,45 @@ Future<TfliteLibrary> fetchTflite({
   String need(String key) =>
       lock[key] ?? (throw StateError('wxscan: $key missing from tflite.lock'));
 
-  if (os == OS.android) {
-    final abi = switch (architecture) {
-      Architecture.arm64 => 'arm64-v8a',
-      Architecture.arm => 'armeabi-v7a',
-      Architecture.x64 => 'x86_64',
-      // The LiteRT distribution has no 32-bit x86 build, which only affects
-      // 32-bit emulators.
-      _ => throw StateError('wxscan: no LiteRT build for $architecture'),
-    };
-    final version = need('LITERT_VERSION');
-    final archive = await _download(
-      'https://dl.google.com/dl/android/maven2/com/google/ai/edge/litert/litert/'
-          '$version/litert-$version.aar',
-      File.fromUri(cache.uri.resolve('litert-$version.aar')),
-      need('LITERT_SHA256'),
-    );
-    final out = File.fromUri(cache.uri.resolve('android/$abi/libLiteRt.so'));
-    _extractOne(archive, out, (name) => name == 'jni/$abi/libLiteRt.so');
-    return TfliteLibrary(file: out, linkName: 'LiteRt', isStatic: false);
-  }
-
-  if (os == OS.iOS) {
-    final version = need('IOS_VERSION');
-    final archive = await _download(
-      need('IOS_URL'),
-      File.fromUri(cache.uri.resolve('TensorFlowLiteC-$version.tar.gz')),
-      need('IOS_SHA256'),
-    );
-    // The xcframework holds one static framework per slice. The device and the
-    // simulator are different slices of the same version.
-    final slice = architecture == Architecture.arm64 && !_isSimulator
-        ? 'ios-arm64'
-        : 'ios-arm64_x86_64-simulator';
-    // The framework binary is a single Mach-O object, not an archive, and
-    // rustc will not take one as a static library; libtool wraps it into a
-    // real one.
-    final object = File.fromUri(cache.uri.resolve('ios/$slice/TensorFlowLiteC.o'));
-    _extractOne(
-      archive,
-      object,
-      (name) => name.endsWith(
-        'TensorFlowLiteC.xcframework/$slice/TensorFlowLiteC.framework/TensorFlowLiteC',
-      ),
-    );
-    final out = File.fromUri(cache.uri.resolve('ios/$slice/libTensorFlowLiteC.a'));
-    if (!out.existsSync()) {
-      final r = Process.runSync('libtool', ['-static', '-o', out.path, object.path]);
-      if (r.exitCode != 0) {
-        throw StateError('wxscan: libtool failed: ${r.stderr}');
-      }
-    }
-    return TfliteLibrary(file: out, linkName: 'TensorFlowLiteC', isStatic: true);
-  }
-
-  // Desktop: one archive per OS and architecture, all holding a single shared
-  // library under some directory the release happens to use.
-  final version = need('DESKTOP_VERSION');
-  final repo = need('DESKTOP_REPO');
-  final (slug, ext, libName) = switch ((os, architecture)) {
+  // One table, one archive per row. The archive holds the library under a
+  // name the release decides, next to a `.build` file, and the exact name is
+  // what is matched inside.
+  final version = need('TFLITE_VERSION');
+  final repo = need('TFLITE_REPO');
+  final (slug, ext, libName, isStatic) = switch ((os, architecture)) {
+    (OS.android, Architecture.arm64) =>
+      ('android_arm64', 'tar.gz', 'libtensorflowlite_c.so', false),
+    (OS.android, Architecture.arm) =>
+      ('android_arm', 'tar.gz', 'libtensorflowlite_c.so', false),
+    (OS.android, Architecture.x64) =>
+      ('android_x64', 'tar.gz', 'libtensorflowlite_c.so', false),
+    // Static, because that is how an iOS application takes a C library: there
+    // is no rpath to load a .dylib from. The simulator archive holds both
+    // slices in one archive, which a linker reads as the one slice of its own.
+    (OS.iOS, _) when !_isSimulator && architecture == Architecture.arm64 =>
+      ('ios_device', 'tar.gz', 'libtensorflowlite_c.a', true),
+    (OS.iOS, _) when _isSimulator =>
+      ('ios_simulator', 'tar.gz', 'libtensorflowlite_c.a', true),
+    // The macOS archive is universal; it is thinned below.
     (OS.macOS, Architecture.arm64) =>
-      ('darwin_arm64', 'tar.gz', 'libtensorflowlite_c.dylib'),
+      ('darwin_universal', 'tar.gz', 'libtensorflowlite_c.dylib', false),
     // Was `(OS.macOS, _)`, which handed the arm64 library to an x86_64 target
     // and left the linker to say so — as a warning, in the middle of a
     // verbose log, followed by a hook failure that named nothing. A macOS
     // release build is universal unless told otherwise, so this is the shape
     // every release build took.
     (OS.macOS, _) => throw StateError(
-        'wxscan: there is no x86_64 TFLite build for macOS — the desktop '
-        'artifacts in tflite.lock are arm64 only, and no official desktop '
-        'distribution exists to take one from.\n'
+        'wxscan: this package builds for Apple Silicon only, and no x86_64 '
+        'TFLite library is fetched for macOS.\n'
         'A macOS release build is universal by default, which is how a build '
         'that runs in debug reaches this. Set ARCHS to arm64 in '
         'macos/Runner/Configs/Release.xcconfig to build for Apple Silicon '
-        'alone, which is the platform this package supports.'),
-    (OS.linux, Architecture.x64) => ('linux_amd64', 'tar.gz', 'libtensorflowlite_c.so'),
-    (OS.linux, Architecture.arm64) => ('linux_arm64', 'tar.gz', 'libtensorflowlite_c.so'),
-    (OS.windows, _) => ('windows_amd64', 'zip', 'tensorflowlite_c.dll'),
+        'alone.'),
+    (OS.linux, Architecture.x64) =>
+      ('linux_amd64', 'tar.gz', 'libtensorflowlite_c.so', false),
+    (OS.linux, Architecture.arm64) =>
+      ('linux_arm64', 'tar.gz', 'libtensorflowlite_c.so', false),
+    (OS.windows, _) => ('windows_amd64', 'zip', 'tensorflowlite_c.dll', false),
     _ => throw StateError('wxscan: no TFLite build for $os/$architecture'),
   };
   final archiveName = 'tflite_c_${version}_$slug.$ext';
@@ -157,22 +114,19 @@ Future<TfliteLibrary> fetchTflite({
     need('SHA_$slug'),
   );
   var out = File.fromUri(cache.uri.resolve('$slug/$libName'));
-  _extractOne(archive, out, _isSharedLibrary);
+  _extractOne(archive, out, (name) => name.split('/').last == libName);
 
+  // The macOS archive is universal; each build gets the slice it asked for.
+  // Its install name is already @rpath/libtensorflowlite_c.dylib, which the
+  // Dart tooling reads to rewrite the dependency path.
   if (os == OS.macOS) {
     out = _thin(out, architecture, cache.uri.resolve('$slug/'), libName);
-    // The archive carries a versioned install name, so it is rewritten for the
-    // loader to find the library by the name it is linked against.
-    final r = Process.runSync('install_name_tool', [
-      '-id',
-      '@rpath/libtensorflowlite_c.dylib',
-      out.path,
-    ]);
-    if (r.exitCode != 0) {
-      throw StateError('wxscan: install_name_tool failed: ${r.stderr}');
-    }
   }
-  return TfliteLibrary(file: out, linkName: 'tensorflowlite_c', isStatic: false);
+  return TfliteLibrary(
+    file: out,
+    linkName: 'tensorflowlite_c',
+    isStatic: isStatic,
+  );
 }
 
 /// Whether this is a simulator build. The hook input does not distinguish the
@@ -180,17 +134,6 @@ Future<TfliteLibrary> fetchTflite({
 bool get _isSimulator =>
     (Platform.environment['SDKROOT'] ?? '').contains('Simulator') ||
     Platform.environment['PLATFORM_NAME'] == 'iphonesimulator';
-
-bool _isSharedLibrary(String name) {
-  final base = name.split('/').last;
-  // These archives carry AppleDouble resource forks and PAX headers beside the
-  // real entries, and both can end in the extension being looked for.
-  if (base.startsWith('._') || name.contains('PaxHeader')) return false;
-  return base.endsWith('.dylib') ||
-      base.endsWith('.dll') ||
-      base.endsWith('.so') ||
-      base.contains('.so.');
-}
 
 /// Downloads [url] to [out] unless it is already there with the right digest.
 Future<File> _download(String url, File out, String wantSha256) async {
@@ -278,7 +221,7 @@ File _thin(File fat, Architecture architecture, Uri dir, String libName) {
 void _extractOne(File archive, File out, bool Function(String name) matches) {
   if (out.existsSync()) return;
   final bytes = archive.readAsBytesSync();
-  final isZip = archive.path.endsWith('.zip') || archive.path.endsWith('.aar');
+  final isZip = archive.path.endsWith('.zip');
   final found = isZip
       ? _findInZip(bytes, matches)
       : _findInTar(Uint8List.fromList(gzip.decode(bytes)), matches);
