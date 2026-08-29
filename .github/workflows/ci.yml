@@ -181,8 +181,10 @@ jobs:
 
       # Release builds, because that is what ships and because the differences
       # are exactly where native code breaks: link-time optimisation, stripped
-      # symbols, and on Android three ABIs instead of the one a debug build on
-      # a connected device would produce.
+      # symbols, and the R8 pass a debug build never runs.
+      #
+      # Android builds arm64 alone. Each ABI is a full Rust build, and three
+      # of them prove the same wiring three times.
       #
       # Signing is nobody's business here — the example signs its release with
       # the debug keys, and the iOS build is told not to sign at all.
@@ -191,7 +193,7 @@ jobs:
         run: |
           flutter pub get
           case "${{ matrix.target }}" in
-            android) flutter build apk --release ;;
+            android) flutter build apk --release --target-platform android-arm64 ;;
             ios)     flutter build ios --release --no-codesign ;;
             macos)   flutter build macos --release ;;
           esac

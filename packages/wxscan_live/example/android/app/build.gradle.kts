@@ -29,10 +29,32 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // LiteRT publishes no 32-bit x86 build, and that ABI is only used by
-        // old emulators. Without this an install on one gets no scanner.
+        // arm64 alone. Every Android device sold for years is arm64, and
+        // the other two ABIs are a full Rust build each - three of
+        // everything, for a demo.
+        //
+        // This only holds because gradle.properties turns off the Flutter
+        // Gradle plugin's own ABI filtering, which otherwise clears this
+        // block and puts its three back; see the note there. An application
+        // that wants armeabi-v7a or the x86_64 emulator adds it here, and
+        // both libraries are built for them.
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // The libraries are compressed in the APK and unpacked at install
+            // time, which is what `android:extractNativeLibs="true"` means.
+            // It is not the modern default: leaving them uncompressed and
+            // page-aligned lets the loader map them straight out of the APK,
+            // and costs no disk beyond the APK itself.
+            //
+            // The trade is download against installed size, and here the
+            // download is the larger number: libtensorflowlite_c and
+            // libwxscan_core deflate to about 40% of themselves.
+            useLegacyPackaging = true
         }
     }
 

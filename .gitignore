@@ -7,6 +7,11 @@ build/
 **/generated_plugin_registrant.*
 pubspec.lock
 
+# Downloads made by tool/update_tflite_lock.sh while it works out the
+# checksums for a new release. They are the release's own archives; the lock
+# file is what is kept.
+packages/wxscan/.tflite-cache/
+
 # Native build output
 **/Pods/
 **/Podfile.lock
