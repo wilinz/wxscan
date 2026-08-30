@@ -176,7 +176,7 @@ TFLite library, so `dart test` runs the scanner with no Flutter involved at all.
 |---|---|---|
 | Android | arm64-v8a, armeabi-v7a, x86_64 | CameraX, API 24+ |
 | iOS | 13.0+ | AVFoundation, 13.0+ |
-| macOS | 10.15+, arm64 | AVFoundation, 10.15+ |
+| macOS | 10.15+, arm64 and x86_64 | AVFoundation, 10.15+ |
 | Linux, Windows | x86_64, and arm64 on Linux | — |
 | Web | WebAssembly in a worker; the scanner module is [built, not bundled](packages/wxscan/README.md#building-the-scanner-yourself) | `getUserMedia`, preview as a platform view |
 | Dart, no Flutter | `dart run` and `dart test` | — |

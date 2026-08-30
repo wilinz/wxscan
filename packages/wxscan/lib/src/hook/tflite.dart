@@ -85,21 +85,13 @@ Future<TfliteLibrary> fetchTflite({
       ('ios_device', 'tar.gz', 'libtensorflowlite_c.a', true),
     (OS.iOS, _) when _isSimulator =>
       ('ios_simulator', 'tar.gz', 'libtensorflowlite_c.a', true),
-    // The macOS archive is universal; it is thinned below.
-    (OS.macOS, Architecture.arm64) =>
+    // One archive holds both macOS slices; it is thinned below to whichever
+    // one this call is for. Architectures are named rather than matched with
+    // `_` so that anything else — a macOS target Apple has not shipped —
+    // falls through to the error at the end instead of being handed a
+    // library that cannot hold it.
+    (OS.macOS, Architecture.arm64 || Architecture.x64) =>
       ('darwin_universal', 'tar.gz', 'libtensorflowlite_c.dylib', false),
-    // Was `(OS.macOS, _)`, which handed the arm64 library to an x86_64 target
-    // and left the linker to say so — as a warning, in the middle of a
-    // verbose log, followed by a hook failure that named nothing. A macOS
-    // release build is universal unless told otherwise, so this is the shape
-    // every release build took.
-    (OS.macOS, _) => throw StateError(
-        'wxscan: this package builds for Apple Silicon only, and no x86_64 '
-        'TFLite library is fetched for macOS.\n'
-        'A macOS release build is universal by default, which is how a build '
-        'that runs in debug reaches this. Set ARCHS to arm64 in '
-        'macos/Runner/Configs/Release.xcconfig to build for Apple Silicon '
-        'alone.'),
     (OS.linux, Architecture.x64) =>
       ('linux_amd64', 'tar.gz', 'libtensorflowlite_c.so', false),
     (OS.linux, Architecture.arm64) =>

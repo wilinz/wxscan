@@ -316,21 +316,17 @@ TensorFlow Lite 运行时要动 emsdk，一编一刻钟。它在自己的仓库
 |---|---|
 | Android | arm64-v8a、armeabi-v7a、x86_64。LiteRT 没出 32 位 x86 的构建，要打那个 ABI 的应用得排掉它。 |
 | iOS | 13.0+ |
-| macOS | 10.15+，arm64——见下 |
+| macOS | 10.15+，arm64 和 x86_64——release 构建是通用二进制，两半都能链 |
 | Linux、Windows | x86_64（Linux 还有 arm64） |
 | Dart（无 Flutter） | macOS、Linux、Windows，`dart run` 和 `dart test` 会通过钩子编译并加载这个库 |
 | Web | worker 里的 WebAssembly，见[浏览器](#浏览器) |
 
-**macOS 只支持 Apple Silicon，而 release 构建默认是通用二进制。** 另一半（x86_64）没有
-TFLite 库可链：`tool/tflite.lock` 钉的桌面产物是 arm64 的，也不存在官方桌面发行版可以
-拿一份 Intel 的。所以应用要在 `macos/Runner/Configs/Release.xcconfig` 里加一行：
-
-```
-ARCHS = arm64
-```
-
-不加的话 `flutter build macos --release` 会在构建钩子里失败，而报错的位置离原因很远。
-example 里已经加了这一行。
+**macOS 两个架构都支持**，也就是 release 构建本来要的那样：`ARCHS` 默认是
+`$(ARCHS_STANDARD)`，在 macOS 上就是 arm64 加 x86_64。`tool/tflite.lock` 钉的
+`darwin_universal` 产物两半都在，钩子会按每次构建的架构把它切开，Rust 库也是每个架构
+各编一遍——应用要出通用二进制，什么都不用设。只想要单个架构的应用照旧在
+`macos/Runner/Configs/Release.xcconfig` 里写（`ARCHS = arm64`），但那已经不是构建能
+成功的前提了。
 
 ## 许可
 

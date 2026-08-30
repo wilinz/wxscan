@@ -1,9 +1,2 @@
 #include "../../Flutter/Flutter-Release.xcconfig"
 #include "Warnings.xcconfig"
-
-// Apple Silicon only. A macOS release build is universal by default, and there
-// is no x86_64 TFLite library to build the other half against: the desktop
-// artifacts wxscan pins are arm64, and no official desktop distribution exists
-// to take an Intel one from. Without this the build fails in the native asset
-// hook, which is a long way from the reason.
-ARCHS = arm64

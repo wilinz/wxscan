@@ -163,7 +163,7 @@ controller.scans.listen((outcome) {
 |---|---|---|
 | Android | arm64-v8a、armeabi-v7a、x86_64 | CameraX，API 24+ |
 | iOS | 13.0+ | AVFoundation，13.0+ |
-| macOS | 10.15+，arm64 | AVFoundation，10.15+ |
+| macOS | 10.15+，arm64 和 x86_64 | AVFoundation，10.15+ |
 | Linux、Windows | x86_64，Linux 还有 arm64 | — |
 | Web | worker 里的 WebAssembly；扫描器模块是[单独构建的，不随包分发](packages/wxscan/README.zh-CN.md#自己构建扫描器) | `getUserMedia`，预览是平台视图 |
 | 纯 Dart（无 Flutter） | `dart run`、`dart test` | — |

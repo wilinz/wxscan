@@ -371,23 +371,19 @@ these two models use rather than the 150 a stock build registers.
 |---|---|
 | Android | arm64-v8a, armeabi-v7a, x86_64. LiteRT publishes no 32-bit x86 build, so an application targeting that ABI must exclude it. |
 | iOS | 13.0+ |
-| macOS | 10.15+, arm64 — see below |
+| macOS | 10.15+, arm64 and x86_64 — a release build is universal and both halves link |
 | Linux, Windows | x86_64 (Linux also arm64) |
 | Dart (no Flutter) | macOS, Linux, Windows — `dart run` and `dart test` build and load the library through the hook |
 | Web | WebAssembly in a worker; see [The browser](#the-browser) |
 
-**macOS is Apple Silicon only, and a release build is universal unless told
-otherwise.** There is no x86_64 TFLite library to build the other half against:
-the desktop artifacts pinned in `tool/tflite.lock` are arm64, and no official
-desktop distribution exists to take an Intel one from. So an application adds
-one line to `macos/Runner/Configs/Release.xcconfig`:
-
-```
-ARCHS = arm64
-```
-
-Without it `flutter build macos --release` fails in the build hook, which is a
-long way from the reason. The example carries the line.
+**macOS covers both architectures**, which is what a release build asks for:
+`ARCHS` defaults to `$(ARCHS_STANDARD)`, and on macOS that is arm64 and
+x86_64 together. The `darwin_universal` archive pinned in `tool/tflite.lock`
+holds both slices, the hook thins it to the one each build is for, and the
+Rust library is built once per architecture, so nothing has to be set for an
+application to ship a universal binary. An application that wants one
+architecture alone still says so in `macos/Runner/Configs/Release.xcconfig`
+(`ARCHS = arm64`); it is no longer needed to make the build succeed.
 
 ## Licence
 
