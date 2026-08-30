@@ -864,7 +864,7 @@ dependencies = [
 
 [[package]]
 name = "wxscan"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cvlite",
  "wxing",
@@ -873,7 +873,7 @@ dependencies = [
 
 [[package]]
 name = "wxscan-ffi"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cbindgen",
  "cvlite",
@@ -884,7 +884,7 @@ dependencies = [
 
 [[package]]
 name = "wxscan-tflite"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "wxscan_core"

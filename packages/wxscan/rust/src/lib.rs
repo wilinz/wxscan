@@ -22,9 +22,13 @@ mod jni_shim;
 mod apple_decoder;
 
 // Everywhere Apple's ImageIO is not: Android, Windows and Linux all have to
-// carry this one. Built for the tests on Apple too — it is pure Rust, and a
-// decoder that could only be exercised on a phone would not be exercised.
-#[cfg(any(not(any(target_os = "ios", target_os = "macos")), test))]
+// carry this one, and only when the `heic` feature asks for it. Built for the
+// tests on Apple too — it is pure Rust, and a decoder that could only be
+// exercised on a phone would not be exercised.
+#[cfg(any(
+    all(not(any(target_os = "ios", target_os = "macos")), feature = "heic"),
+    test
+))]
 mod heic_decoder;
 
 /// Give this library a decoder for the formats it does not carry.
@@ -45,12 +49,24 @@ mod heic_decoder;
 pub extern "C" fn wxscan_install_platform_image_decoder() {
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     let decoder = apple_decoder::decoder();
-    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    #[cfg(all(
+        not(any(target_os = "ios", target_os = "macos")),
+        feature = "heic"
+    ))]
     let decoder = heic_decoder::decoder();
 
+    // A build that left `heic` out where there is no ImageIO to borrow has
+    // nothing to lend, and this does nothing rather than not existing: Dart
+    // resolves it by name, and a symbol that comes and went with a feature
+    // would fail at the call instead of at the format. A HEIC is then
+    // UnsupportedFormat, which is the answer from before there was a decoder
+    // to install at all.
+    #[cfg(any(any(target_os = "ios", target_os = "macos"), feature = "heic"))]
     // SAFETY: the pointers are to functions in this library, which outlive any
     // registration of them.
-    unsafe { wxscan_ffi::wxscan_set_image_decoder(&decoder) };
+    unsafe {
+        wxscan_ffi::wxscan_set_image_decoder(&decoder)
+    };
 }
 
 /// Serialising the tests that install an image decoder.

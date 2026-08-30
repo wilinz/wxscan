@@ -12,6 +12,7 @@ import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 import 'package:native_toolchain_rust/native_toolchain_rust.dart';
 
+import 'package:wxscan/src/hook/options.dart';
 import 'package:wxscan/src/hook/tflite.dart';
 
 void main(List<String> args) async {
@@ -21,6 +22,9 @@ void main(List<String> args) async {
     if (!input.config.buildCodeAssets) return;
 
     final code = input.config.code;
+    // What the application asked for in its own pubspec: which image decoders
+    // to carry, and how cargo should trade size against speed.
+    final options = readOptions(input, code.targetOS);
     final tflite = await fetchTflite(
       os: code.targetOS,
       architecture: code.targetArchitecture,
@@ -30,9 +34,14 @@ void main(List<String> args) async {
 
     await RustBuilder(
       assetName: 'src/bindings.dart',
+      // The image formats, and nothing but: every feature this crate has is
+      // one, and which of them a build carries is the application's to say.
+      enableDefaultFeatures: false,
+      features: options.features,
       // The hook runner scrubs the environment, so the linker's search path
       // cannot be inherited; build.rs reads these instead.
       extraCargoEnvironmentVariables: {
+        ...options.cargoEnvironment,
         'TFLITE_LIB_DIR': tflite.directory.path,
         'TFLITE_LIB_NAME': tflite.linkName,
         'TFLITE_LINK_STATIC': tflite.isStatic ? '1' : '0',

@@ -292,6 +292,66 @@ Downloads are cached in the hook's shared output directory, so only the first
 build pays for them. That build also compiles the Rust sources, which takes a
 few minutes; later builds are incremental.
 
+### Configuring the build
+
+Two things about the native library are the application's to decide rather than
+this package's, and both are set in the application's own `pubspec.yaml`:
+
+```yaml
+hooks:
+  user_defines:
+    wxscan:
+      image_formats: [png, jpeg]
+      cargo_profile:
+        strip: symbols
+        codegen_units: 1
+```
+
+Leave either out and nothing changes: the formats below are the default, and
+the profile is the one in `rust/Cargo.toml`. A misspelled format or profile key
+fails the build saying so, rather than quietly producing a library missing a
+decoder — which is what a typo in a list like this otherwise costs.
+
+**`image_formats`** is which decoders are compiled in: `png`, `jpeg`, `gif`,
+`webp`, `bmp`, `tiff`, `heic`. The default is all seven, except on Apple, where
+ImageIO is lent to the library at startup and reads all of them already — so
+there the default is the three a photo picker writes, and asking for the others
+compiles a second copy of what the system has. An application that only ever
+scans camera frames, or only pictures it wrote itself, can say so:
+
+| `image_formats` | Android arm64, stripped | macOS arm64 |
+|---|---|---|
+| default | 2.13 MB | 1.29 MB |
+| `[png, jpeg, gif]` | 1.22 MB | 1.29 MB (the default there) |
+| `[jpeg]` | 1.02 MB | 1.04 MB |
+| `[]` | 866 KB | 916 KB |
+
+A format left out is not an error at run time either: the picture comes back
+`PictureUnreadable` with `unsupportedFormat`, which is the same answer as for a
+format nothing here has ever read, and `scanPixels` still takes anything the
+application decodes itself. On Apple the lent ImageIO answers first for
+everything, so leaving formats out there changes the size and not the result.
+
+**`cargo_profile`** is `[profile.release]`, one key at a time: `opt_level`,
+`lto`, `codegen_units`, `strip`, `panic`. They reach cargo as
+`CARGO_PROFILE_RELEASE_*`, which overrides the manifest.
+
+| profile | macOS arm64 | 1080p frame |
+|---|---|---|
+| default (`opt_level: 3`, `lto: true`) | 1.29 MB | 122 ms |
+| `strip: symbols` | 1.14 MB | 122 ms |
+| `strip: symbols`, `codegen_units: 1`, `panic: abort` | 1.05 MB | 122 ms |
+| the above plus `opt_level: z`, `lto: fat` | 840 KB | **421 ms** |
+
+The first three lines are free and the fourth is not: this is a pipeline of
+loops over pixels, and `opt_level: z` is the setting that stops unrolling them.
+A third off the library for three and a half times the time per frame is a
+trade worth making deliberately or not at all.
+
+`panic: abort` is smaller and also more honest — a Rust panic called from Dart
+has nowhere to unwind to — but it turns an error crossing that boundary into
+the process ending, which is the application's call to make.
+
 ## The browser
 
 The web build is the same algorithm and the same weights, compiled to

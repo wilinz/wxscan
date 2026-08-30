@@ -21,11 +21,35 @@ crate-type = ["cdylib", "staticlib"]
 # `publish_kit release-deps` and `publish_kit restore-dev` switch between them.
 # Both rewrite by key and refuse a manifest they do not recognise, so edit the
 # shape here at your own risk.
+#
+# Which image decoders are compiled in is `hook/build.dart`'s to decide, from
+# the application's pubspec, so this crate takes none of wxscan-ffi's and
+# re-exports each as a feature of its own below. `image-io` is always on: it is
+# the entry points and the format sniffing rather than a decoder, and a build
+# without it would lose `wxscan_scan_path` and `wxscan_scan_bytes` as symbols,
+# which Dart resolves by name and would fail to find at the first call rather
+# than at the format question it is really asking.
 [dependencies]
-wxscan-ffi = { path = "../../../../wxscan-rs/crates/wxscan-ffi" }
+wxscan-ffi = { path = "../../../../wxscan-rs/crates/wxscan-ffi", default-features = false, features = ["tflite", "image-io", "model-fs"] }
 wxscan = { path = "../../../../wxscan-rs/crates/wxscan" }
 # Used by the Android binding to convert GB2312 payloads for display.
 encoding_rs = "0.8"
+
+# One feature per image format, forwarded to wxscan-ffi, plus HEIC which is
+# this crate's own. `default` is what a build gets when the pubspec says
+# nothing, and matches what the package carried before any of this was
+# configurable: everything, except that webp, bmp and tiff and the HEIC
+# decoder are the hook's to leave out on Apple, where ImageIO reads all four
+# already.
+[features]
+default = ["png", "jpeg", "gif", "webp", "bmp", "tiff", "heic"]
+png = ["wxscan-ffi/png"]
+jpeg = ["wxscan-ffi/jpeg"]
+gif = ["wxscan-ffi/gif"]
+webp = ["wxscan-ffi/webp"]
+bmp = ["wxscan-ffi/bmp"]
+tiff = ["wxscan-ffi/tiff"]
+heic = ["dep:heif-oxide"]
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = { version = "0.21", default-features = false }
@@ -35,13 +59,14 @@ jni = { version = "0.21", default-features = false }
 # ignores the orientation tag; its Java one needs a JNIEnv this path does not
 # have. Linux has no system decoder at all, and Windows only if the user has
 # installed the HEIF extension. Pure Rust, so it costs size rather than
-# compatibility, and the same size on each of them.
+# compatibility, and the same size on each of them — which is why it is behind
+# the `heic` feature and can be left out by an application that never sees one.
 #
 # heif-oxide rather than the `heic` crate, which is faster to say but is
 # AGPL-3.0-or-commercial: linking it would make this library's Apache-2.0
 # undeliverable. This one and everything under it are MIT OR Apache-2.0.
 [target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dependencies]
-heif-oxide = "0.1"
+heif-oxide = { version = "0.1", optional = true }
 
 # The HEIC decoder is pure Rust and so compiles anywhere. It is built for the
 # tests on the development machine too, so that the one thing this package

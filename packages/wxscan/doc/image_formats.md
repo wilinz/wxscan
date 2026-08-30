@@ -32,16 +32,20 @@ For a format nothing here reads, decode it with the platform's own API and use
 
 ## Where each column comes from
 
+The table is what a build carries by default. Each of the seven decoded in
+Rust is its own cargo feature, and an application that will never see one can
+leave it out; see [Carrying fewer of them](#carrying-fewer-of-them).
+
 **Three formats are carried everywhere.** PNG, JPEG and GIF are what a camera
 and a photo picker write — iOS `image_picker` emits those three and nothing
 else — and they are decoded in Rust, identically on every platform.
 
 **Three more are carried where nothing can be borrowed.** WebP, BMP and TIFF
 arrive from elsewhere rather than from a camera: WebP off the web, BMP out of a
-Windows screenshot. They cost 570 KB, which is worth paying on Android, Windows
-and Linux, and wasteful on Apple, where ImageIO reads all three already. So
-they are a target dependency of `wxscan-ffi` rather than a feature — nothing at
-the call site has to know which platform needs them.
+Windows screenshot. They cost 534 KB, which is worth paying on Android, Windows
+and Linux, and wasteful on Apple, where ImageIO reads all three already. So the
+build hook asks for them everywhere except Apple, and nothing at the call site
+has to know which platform needs them.
 
 **Apple borrows the rest.** `CGImageSourceCopyTypeIdentifiers()` reports 62
 formats, and every application links ImageIO already, so this costs a few
@@ -77,9 +81,9 @@ hands one over for free. The rest:
   not others is worse than one that works everywhere, and this is a library
   rather than an application: it cannot ask anyone to install anything.
 
-So `heif-oxide` is compiled in on all three. It costs 0.6 MB of static library —
-the same 0.6 MB on each — and decodes a 320x460 HEIC in about 2 ms. Apple keeps
-ImageIO and does not pull it in.
+So `heif-oxide` is compiled in on all three. It is 375 KB of the Android arm64
+library — the same decoder on each — and decodes a 320x460 HEIC in about 2 ms.
+Apple keeps ImageIO and does not pull it in.
 
 The line is the same one WebP, BMP and TIFF fall on: **borrow from Apple, carry
 everywhere else.** Only the web escapes both, decoding its own pictures.
@@ -116,6 +120,39 @@ a format found on the web rather than in a camera roll, so the gap is a picture
 saved from a page and then scanned on Android or a desktop. When `oxideav-av1`
 implements pixel decode, adding it is a few lines in
 `rust/src/heic_decoder.rs`.
+
+## Carrying fewer of them
+
+Every format above that is decoded in Rust is a cargo feature of its own, and
+which of them a build carries is the application's to say, in its own
+`pubspec.yaml`:
+
+```yaml
+hooks:
+  user_defines:
+    wxscan:
+      image_formats: [png, jpeg]
+```
+
+The list replaces the default rather than adding to it, so this is a build that
+reads a PNG and a JPEG and answers `unsupportedFormat` for everything else —
+which is what an application scanning only what its own camera wrote wants, and
+what the size is for. Measured on the Android arm64 library, stripped:
+
+| `image_formats` | Size |
+|---|---|
+| default: all seven | 2.13 MB |
+| without `heic` | 1.75 MB |
+| `[png, jpeg, gif]` | 1.22 MB |
+| `[]` | 866 KB |
+
+On Apple the numbers barely move — the decoders there are ImageIO's, and the
+default already carries only three — and the result does not move at all,
+since the lent decoder answers for every format either way.
+
+Nothing about the API changes: a format left out returns `PictureUnreadable`
+with `unsupportedFormat`, the same as a format nothing here has ever read, and
+`scanPixels` still takes whatever the application decoded itself.
 
 ## Adding a decoder from outside
 

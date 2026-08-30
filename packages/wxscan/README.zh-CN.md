@@ -252,6 +252,59 @@ CNN 推理用 TFLite C 库，构建时下载，不随包携带。每个产物都
 下载会缓存在钩子的共享输出目录里，只有第一次构建付这个代价。那次还要编 Rust，得等几
 分钟；之后是增量的。
 
+### 配置构建
+
+原生库有两件事该由应用自己定，不该由这个包定，都写在应用自己的 `pubspec.yaml` 里：
+
+```yaml
+hooks:
+  user_defines:
+    wxscan:
+      image_formats: [png, jpeg]
+      cargo_profile:
+        strip: symbols
+        codegen_units: 1
+```
+
+两个都不写就什么都不变：格式按下面的默认来，profile 就是 `rust/Cargo.toml` 里那份。
+格式名或 profile 键拼错会让构建直接失败并说清楚，而不是悄悄产出一个少了某个解码器的
+库——这种列表里的拼写错误，代价本来就是这个。
+
+**`image_formats`** 是编进去哪些解码器：`png`、`jpeg`、`gif`、`webp`、`bmp`、`tiff`、
+`heic`。默认七个全要，Apple 除外——那边启动时会把 ImageIO 借给库，这七种它全都读得了，
+所以默认只留相册选择器写得出的那三种，多要的等于把系统已有的再编一份。只扫相机帧、
+或者只扫自己写出来的图片的应用，可以直说：
+
+| `image_formats` | Android arm64（strip 后） | macOS arm64 |
+|---|---|---|
+| 默认 | 2.13 MB | 1.29 MB |
+| `[png, jpeg, gif]` | 1.22 MB | 1.29 MB（那边的默认） |
+| `[jpeg]` | 1.02 MB | 1.04 MB |
+| `[]` | 866 KB | 916 KB |
+
+去掉的格式在运行时也不是错误：图片会以 `PictureUnreadable` 加 `unsupportedFormat`
+回来，和一个从来就没人读过的格式是同一个答案；`scanPixels` 照样收应用自己解出来的
+像素。Apple 上借来的 ImageIO 什么都先答一遍，所以在那边少编格式只影响体积，不影响
+结果。
+
+**`cargo_profile`** 就是 `[profile.release]`，一个键一个键地写：`opt_level`、`lto`、
+`codegen_units`、`strip`、`panic`。它们以 `CARGO_PROFILE_RELEASE_*` 的形式到达 cargo，
+优先级高于 manifest。
+
+| profile | macOS arm64 | 1080p 一帧 |
+|---|---|---|
+| 默认（`opt_level: 3`、`lto: true`） | 1.29 MB | 122 ms |
+| `strip: symbols` | 1.14 MB | 122 ms |
+| `strip: symbols`、`codegen_units: 1`、`panic: abort` | 1.05 MB | 122 ms |
+| 再加 `opt_level: z`、`lto: fat` | 840 KB | **421 ms** |
+
+前三行是白捡的，第四行不是：这是一条在像素上跑循环的流水线，而 `opt_level: z` 正是那个
+不让循环展开的开关。库小三分之一，每帧慢三倍半——这笔账要么明明白白地算过再做，要么
+就别做。
+
+`panic: abort` 更小，也更诚实——从 Dart 调进来的 Rust panic 本来就无处可展开——但它把
+一个跨边界的错误变成了进程结束，这是应用该自己拿的主意。
+
 ## 浏览器
 
 web 构建是同一套算法、同一批权重，编成 WebAssembly，跑在 worker 里，所以解一帧不会卡
