@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- No change of its own. Released alongside `wxscan` 0.1.2, whose image decoders
+  and release profile an application can now configure in its pubspec.
+
 ## 0.1.1
 
 - No change of its own. Released alongside `wxscan` 0.1.1, which builds for

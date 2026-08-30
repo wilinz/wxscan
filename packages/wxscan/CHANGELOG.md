@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.1.2
+
+- The image formats the native library carries decoders for, and the cargo
+  release profile it is built with, are now the application's to set, in its
+  own `pubspec.yaml` under `hooks: user_defines: wxscan:`. Both were fixed
+  here before, and neither is this package's business: which formats an
+  application will ever be handed is something only it knows, and a decoder
+  for a format it never sees is pure size — 2.13 MB of Android library becomes
+  866 KB when the answer is "none of them, I scan camera frames".
+
+  ```yaml
+  hooks:
+    user_defines:
+      wxscan:
+        image_formats: [png, jpeg]
+        cargo_profile:
+          strip: symbols
+  ```
+
+  `image_formats` takes any of `png`, `jpeg`, `gif`, `webp`, `bmp`, `tiff` and
+  `heic`, and defaults to all of them except on Apple, where ImageIO is lent to
+  the library and reads them already. A format left out answers
+  `unsupportedFormat`, the same as a format nothing here ever read.
+  `cargo_profile` takes `opt_level`, `lto`, `codegen_units`, `strip` and
+  `panic`. Both are validated: a misspelled format or key stops the build
+  rather than quietly shipping a library missing a decoder. `doc/image_formats.md`
+  and the README carry the measured sizes, including what `opt_level: z` costs
+  per frame, which is more than it saves.
+
 ## 0.1.1
 
 - macOS builds for Intel as well as Apple Silicon. The `darwin_universal`
