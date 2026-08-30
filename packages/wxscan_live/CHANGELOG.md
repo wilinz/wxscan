@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- No change of its own. Released alongside `wxscan` 0.1.1, which builds for
+  Intel Macs as well as Apple Silicon; a live-scanning application on macOS
+  gets that through the scanner it depends on.
+
 ## 0.1.0
 
 First release.

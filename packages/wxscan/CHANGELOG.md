@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1
+
+- macOS builds for Intel as well as Apple Silicon. The `darwin_universal`
+  archive the build hook pins holds both slices and the hook already thinned it
+  to the one each build asked for; what stopped an x86_64 build was a check
+  written when no x86_64 library existed to fetch. A macOS release build is
+  universal by default, so this is what a release build wanted all along —
+  `ARCHS` no longer has to be pinned to arm64 in
+  `macos/Runner/Configs/Release.xcconfig`, and an application that wants one
+  architecture alone still sets it.
+
 ## 0.1.0
 
 First release.
