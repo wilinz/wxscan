@@ -103,9 +103,12 @@ class PublishKit {
         pass('$dep is on a version dependency: $line');
       }
     }
-    final hasPatch = File(_coreRustManifest)
-        .readAsStringSync()
-        .contains('[patch.crates-io]');
+    // At the start of a line, because the header comment above the
+    // dependencies explains what the block is for and names it — a substring
+    // search reads that explanation as the block itself and reports
+    // development mode to anyone who has just left it.
+    final hasPatch = RegExp(r'^\[patch\.crates-io\]', multiLine: true)
+        .hasMatch(File(_coreRustManifest).readAsStringSync());
     if (hasPatch) {
       print(
         '  note  wxscan/rust carries a [patch.crates-io] block —\n'
