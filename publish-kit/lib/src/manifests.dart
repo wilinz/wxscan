@@ -161,7 +161,8 @@ class Manifests {
     );
   }
 
-  /// Replaces one dependency line in a Cargo manifest.
+  /// Points one Cargo dependency at a new source, keeping everything else it
+  /// says about itself.
   ///
   /// This is the edit the whole release hinges on. `wxscan/rust` depends
   /// on `wxscan-ffi` and `wxscan` by a path into a sibling `wxscan-rs`
@@ -170,12 +171,19 @@ class Manifests {
   /// is what makes the package installable, and switching it back is what keeps
   /// local development working against uncommitted Rust changes.
   ///
+  /// [source] is the source key alone — `path = "..."` or `version = "..."` —
+  /// and every other key on the line survives. That matters now that the line
+  /// carries `default-features` and a feature list: writing the line whole,
+  /// as this once did, dropped them on the way out and did not put them back,
+  /// so a published build silently had a different feature set from the one
+  /// developed against.
+  ///
   /// Throws unless the key appears exactly once, so a manifest that drifted
   /// from what this expects stops the release instead of being half-edited.
   Future<void> setCargoDependency(
     String manifestPath,
     String dependency,
-    String spec,
+    String source,
   ) async {
     final file = File(manifestPath);
     final lines = (await file.readAsString()).split('\n');
@@ -193,12 +201,58 @@ class Manifests {
       );
     }
 
+    final kept = _dependencyExtras(lines[matches.single], dependency);
+    // A dependency that says nothing but its version is written the short way,
+    // which is what a manifest holds when nobody has had to say more.
+    final spec = kept.isEmpty && source.startsWith('version')
+        ? source.substring(source.indexOf('=') + 1).trim()
+        : '{ ${[source, ...kept].join(', ')} }';
+
     lines[matches.single] = '$dependency = $spec';
     await _write(
       file,
       lines.join('\n'),
       '${_short(manifestPath)}: $dependency = $spec',
     );
+  }
+
+  /// Everything a dependency line says apart from where the crate comes from.
+  ///
+  /// Splits the inline table on the commas that separate its entries, which
+  /// is not every comma: a feature list holds its own. So the split tracks
+  /// bracket depth and quoting, and `path`, `version` and `git` — the source,
+  /// which the caller is replacing — are dropped.
+  static List<String> _dependencyExtras(String line, String dependency) {
+    final rhs = line.substring(line.indexOf('=') + 1).trim();
+    if (!rhs.startsWith('{')) return const [];
+
+    final body = rhs.substring(1, rhs.lastIndexOf('}'));
+    final entries = <String>[];
+    final buffer = StringBuffer();
+    var depth = 0;
+    var quoted = false;
+    for (final rune in body.runes) {
+      final ch = String.fromCharCode(rune);
+      if (ch == '"') quoted = !quoted;
+      if (!quoted && (ch == '[' || ch == '{')) depth++;
+      if (!quoted && (ch == ']' || ch == '}')) depth--;
+      if (ch == ',' && depth == 0 && !quoted) {
+        entries.add(buffer.toString());
+        buffer.clear();
+      } else {
+        buffer.write(ch);
+      }
+    }
+    entries.add(buffer.toString());
+
+    return [
+      for (final entry in entries)
+        if (entry.trim().isNotEmpty &&
+            !const ['path', 'version', 'git'].contains(
+              entry.split('=').first.trim(),
+            ))
+          entry.trim(),
+    ];
   }
 
   /// Reads back one dependency line, for the preflight report.

@@ -207,7 +207,7 @@ class PublishKit {
     await _manifests.setCargoDependency(
       wxingManifest,
       'cvlite',
-      '"${v[Repo.cvlite]}"',
+      'version = "${v[Repo.cvlite]}"',
     );
 
     await _manifests.setRustWorkspaceVersion(rootOf(Repo.rust), v[Repo.rust]!);
@@ -217,13 +217,13 @@ class PublishKit {
       await _manifests.setCargoDependency(
         manifest,
         'cvlite',
-        '"${v[Repo.cvlite]}"',
+        'version = "${v[Repo.cvlite]}"',
       );
       if (crate == 'wxscan') {
         await _manifests.setCargoDependency(
           manifest,
           'wxing',
-          '"${v[Repo.wxing]}"',
+          'version = "${v[Repo.wxing]}"',
         );
       }
     }
@@ -251,14 +251,15 @@ class PublishKit {
     final version = await _manifests.readVersion(rootOf(Repo.rust));
     print('wxscan/rust -> crates.io $version');
 
-    // Feature flags stay exactly as the development manifest had them: this
-    // package wants wxscan's default features, and quietly turning them off
-    // here would drop the tflite backend from published builds only.
+    // Only the source key moves; `default-features` and the feature list stay
+    // exactly as the development manifest had them. Which image decoders a
+    // build carries is settled there, and a release that quietly dropped the
+    // list would ship a different library from the one developed against.
     for (final dep in ['wxscan-ffi', 'wxscan']) {
       await _manifests.setCargoDependency(
         _coreRustManifest,
         dep,
-        '"$version"',
+        'version = "$version"',
       );
     }
     await _manifests.setCargoPatch(_coreRustManifest, null);
@@ -279,7 +280,7 @@ class PublishKit {
       await _manifests.setCargoDependency(
         _coreRustManifest,
         dep,
-        '{ path = "${p.join(up, Repo.rust.dirName, 'crates', dep)}" }',
+        'path = "${p.join(up, Repo.rust.dirName, 'crates', dep)}"',
       );
     }
 
