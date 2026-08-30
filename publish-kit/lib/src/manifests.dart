@@ -49,8 +49,7 @@ class Manifests {
     final contents = await file.readAsString();
 
     final section = RegExp(
-      r'(\[workspace\.package\][^\[]*?\nversion\s*=\s*)"[^"]*"',
-      dotAll: true,
+      r'(\[workspace\.package\]\n(?:(?!\s*\[)[^\n]*\n)*?version\s*=\s*)"[^"]*"',
     );
     if (!section.hasMatch(contents)) {
       throw StateError(
@@ -77,9 +76,13 @@ class Manifests {
     final file = File(manifestPath);
     final contents = await file.readAsString();
 
+    // Lines rather than characters: the table was previously bounded by
+    // "anything that is not a `[`", which a manifest carrying `keywords` or
+    // `categories` above its version breaks — those values are arrays, and
+    // the crate then reports no version at all. A table ends at the next line
+    // opening one, so that is what the search stops at.
     final section = RegExp(
-      r'(\[package\][^\[]*?\nversion\s*=\s*)"[^"]*"',
-      dotAll: true,
+      r'(\[package\]\n(?:(?!\s*\[)[^\n]*\n)*?version\s*=\s*)"[^"]*"',
     );
     if (!section.hasMatch(contents)) {
       throw StateError('No version under [package] in $manifestPath.');
