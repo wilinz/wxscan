@@ -20,7 +20,7 @@ dependencies:
   path_provider: ^2.1.4
   # Does that copy without the bytes passing through Dart: AssetManager into a
   # FileOutputStream on Android, InputStream to OutputStream on Apple.
-  large_file_handler: ^0.5.0
+  large_file_handler: ^0.5.2
   wxscan_live:
     path: ../
   wxscan:

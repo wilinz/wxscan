@@ -17,12 +17,12 @@ const _dirName = 'wxscan-models';
 /// Copies the bundled weights into the sandbox when what is there is not what
 /// is bundled, and returns the two paths.
 ///
-/// The copying is `large_file_handler` where it works, which streams: on
-/// Android the asset goes from `AssetManager.open` into a `FileOutputStream`,
-/// on iOS from the file it already is inside the bundle through `InputStream`
-/// and `OutputStream`. Neither passes the megabyte through Dart at all. Where
-/// it does not work — macOS, for the reason in [installWeights] — the asset is
-/// read here and written in chunks, which is what this did everywhere before.
+/// The copying is `large_file_handler`, which streams: on Android the asset
+/// goes from `AssetManager.open` into a `FileOutputStream`, on Apple from the
+/// file it already is inside the bundle through `InputStream` and
+/// `OutputStream`. Neither passes the megabyte through Dart at all. If it
+/// fails anyway the asset is read here and written in chunks, which is what
+/// this did everywhere before the plugin.
 ///
 /// [readAsset] is used only for the few dozen bytes of the manifest, and is
 /// passed in rather than imported so that this file knows nothing about the
@@ -74,18 +74,21 @@ Future<(String detect, String sr)> installWeights(
       if (expected == null && await file.exists()) return file.path;
       _log('$name: the plugin reported success and the file is not right');
     } on Object catch (e) {
-      // Known to happen on macOS: the plugin looks the asset up with
-      // `Bundle.main.path(forResource:)`, which is where iOS keeps
-      // flutter_assets and macOS does not — there they live inside
-      // App.framework, so every copy comes back "Asset not found 404". Its
-      // macOS implementation is its iOS one. Caught rather than special-cased
-      // by platform, so a fixed version simply stops taking this branch.
+      // No platform is expected to take this branch. macOS did until
+      // large_file_handler 0.5.1: it looked the asset up with
+      // `Bundle.main.path(forResource:)`, which only searches Resources, while
+      // the key the engine returns there is a path from the bundle root into
+      // App.framework — so every copy came back "Asset not found 404"
+      // (DenisovAV/large_file_handler#10). Kept as a fallback rather than
+      // deleted with the fix, because the asset is readable from here whatever
+      // the plugin's reason, and the alternative to falling back is a demo
+      // that cannot scan.
       _log('$name: the plugin could not copy it ($e), reading it here instead');
     }
 
-    // The way this worked before the plugin, and still the way it works
-    // wherever the plugin will not: the asset arrives as one buffer — no
-    // public Flutter API streams one — and goes out in chunks.
+    // The way this worked before the plugin, and the way it still works when
+    // the plugin will not: the asset arrives as one buffer — no public Flutter
+    // API streams one — and goes out in chunks.
     final bytes = await readAsset('assets/models/$name');
     final tmp = File('${file.path}.part');
     await _writeStreaming(tmp, bytes);

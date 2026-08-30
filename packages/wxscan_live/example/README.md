@@ -41,8 +41,8 @@ what `WxScanner.create(detectModelPath: ...)` takes, and why the copy exists at
 all: a Flutter asset has no path. `assets/models/model-version.txt` records
 what each weight should be, so a build that ships new ones copies again rather
 than opening the old. The copying itself is `large_file_handler`, which streams
-it natively on Android and iOS without the megabyte passing through Dart; where
-that will not work the asset is read and written in chunks here. See
+it natively without the megabyte passing through Dart; if that fails the asset
+is read and written in chunks here. See
 [`lib/model_files_io.dart`](lib/model_files_io.dart).
 
 The TFLite models go in `assets/models/`. This checkout has them; the package
