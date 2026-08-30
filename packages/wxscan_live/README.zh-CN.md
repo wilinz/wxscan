@@ -344,7 +344,10 @@ metrics 送给 Dart。转屏就是一次 resize，于是 Dart 永远停在上一
 这里不编任何原生代码。扫描器来自
 [`wxscan`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan)，由它的构建
 钩子产出成一个 Dart code asset。本包依赖那个包，所以应用不管用了哪个，拿到的都只有
-一份。
+一份——配置也在同一个地方，应用自己 `pubspec.yaml` 里的 `hooks: user_defines: wxscan:`，
+不管它有没有直接依赖 `wxscan`。只扫相机帧的应用可以一个图片解码器都不带，在 Android
+上那是将近一兆；见
+[配置构建](https://github.com/wilinz/wxscan/tree/main/packages/wxscan#配置构建)。
 
 Swift 和 Kotlin 直接调扫描器的 C ABI，因为相机帧不经过 Dart。code asset 由 Dart 运行时
 加载，不由 Xcode 或 Gradle 链接，所以那些入口是运行时解析的：Android 上 Flutter 把它

@@ -142,6 +142,11 @@ ignores the orientation tag, Linux has none, Windows has one only if the user
 installed it — so those three carry their own. **A browser decodes its own
 pictures**, which is why the web build carries no decoders whatsoever.
 
+That is what a build carries by default. Each decoder carried here is a cargo
+feature, and an application that will never be handed a TIFF can leave it out —
+`image_formats` in [Configuring the build](#configuring-the-build), which is
+where the sizes are.
+
 **[doc/image_formats.md](doc/image_formats.md)** has the full matrix, what each
 platform borrows and why, and how to lend one of your own.
 

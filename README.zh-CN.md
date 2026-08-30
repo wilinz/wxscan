@@ -129,6 +129,7 @@ controller.scans.listen((outcome) {
 | 权重干什么用，没有会怎样 | [模型](packages/wxscan/README.zh-CN.md#模型) |
 | 浏览器上怎么部署 | [wxscan](packages/wxscan/README.zh-CN.md#浏览器) · [构建扫描器](packages/wxscan/README.zh-CN.md#自己构建扫描器) · [wxscan_live](packages/wxscan_live/README.zh-CN.md#浏览器) |
 | 原生库怎么编、怎么被找到 | [构建钩子](packages/wxscan/README.zh-CN.md#构建钩子) · [原生库](packages/wxscan_live/README.zh-CN.md#原生库) |
+| 怎么把它做小：带哪些解码器、怎么编 | [配置构建](packages/wxscan/README.zh-CN.md#配置构建) |
 | 一整页可以直接抄的扫描界面 | [`example/lib/scan_page.dart`](packages/wxscan_live/example/lib/scan_page.dart) |
 
 ## 为什么用它
@@ -195,7 +196,8 @@ Documents/
 下载 TFLite C 库，把两者都声明成 code asset 交给 Flutter 打包。`wxscan_live` 从 Swift
 和 Kotlin 调的是同一个库，运行时才解析入口——Android 上从 `lib/<abi>/` 取，那本来就是
 `System.loadLibrary` 找的地方；Apple 平台用 `dlsym`。所以不管应用用了这两个包中的
-几个，扫描器和 TFLite 各自都只有一份。细节和换 TFLite 版本的做法在
+几个，扫描器和 TFLite 各自都只有一份。这个库带什么由应用自己在 `pubspec.yaml` 里定：
+编进哪些图片解码器，以及 cargo 拿体积换速度换到什么程度。细节和换 TFLite 版本的做法在
 [wxscan 的 README](packages/wxscan/README.zh-CN.md#构建钩子) 里。
 
 ## 跑演示应用

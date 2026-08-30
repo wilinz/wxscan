@@ -139,6 +139,7 @@ controller.scans.listen((outcome) {
 | What the weights do, and life without them | [Models](packages/wxscan/README.md#models) |
 | Serving it in a browser | [wxscan](packages/wxscan/README.md#the-browser) · [building the scanner](packages/wxscan/README.md#building-the-scanner-yourself) · [wxscan_live](packages/wxscan_live/README.md#the-browser) |
 | How the native library is built and found | [the build hook](packages/wxscan/README.md#the-build-hook) · [the native library](packages/wxscan_live/README.md#the-native-library) |
+| Making it smaller: which decoders to carry, how to build them | [Configuring the build](packages/wxscan/README.md#configuring-the-build) |
 | A whole scanning screen to read or copy | [`example/lib/scan_page.dart`](packages/wxscan_live/example/lib/scan_page.dart) |
 
 ## Why this one
@@ -214,8 +215,10 @@ library from Swift and Kotlin, resolving its entry points at run time — on
 Android from
 `lib/<abi>/` where `System.loadLibrary` already looks, on Apple platforms with
 `dlsym`. So an application carries one copy of the scanner and one of TFLite
-however many of the two packages it uses. The details, including how to move the
-TFLite version, are in
+however many of the two packages it uses. What that library carries is the
+application's to set, in its own `pubspec.yaml`: which image decoders are
+compiled in and what cargo trades size against speed for. The details,
+including how to move the TFLite version, are in
 [wxscan's README](packages/wxscan/README.md#the-build-hook).
 
 ## Building the demo

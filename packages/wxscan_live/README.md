@@ -417,7 +417,12 @@ by an Android engine bug.
 Nothing native is built here. The scanner comes from
 [`wxscan`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan), whose build hook produces
 it as a Dart code asset. This package depends on that one, so an application
-using either gets exactly one copy.
+using either gets exactly one copy — and configures it in the same place,
+under `hooks: user_defines: wxscan:` in its own `pubspec.yaml`, whether it
+depends on `wxscan` directly or not. An application that only ever scans camera
+frames carries no image decoders at all, which is most of a megabyte on
+Android; see
+[Configuring the build](https://github.com/wilinz/wxscan/tree/main/packages/wxscan#configuring-the-build).
 
 The Swift and Kotlin code calls the scanner's C ABI directly, because camera
 frames never pass through Dart. A code asset is loaded by the Dart runtime
