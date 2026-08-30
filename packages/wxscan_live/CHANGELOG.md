@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3
+
+- Documentation only. The native library section now says that what that
+  library carries — which image decoders, and how cargo built them — is set in
+  the application's own pubspec, under `hooks: user_defines: wxscan:`, whether
+  or not `wxscan` is a direct dependency. An application that only ever scans
+  camera frames can carry no image decoders at all.
+
 ## 0.1.2
 
 - No change of its own. Released alongside `wxscan` 0.1.2, whose image decoders

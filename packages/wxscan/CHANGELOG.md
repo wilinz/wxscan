@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3
+
+- Documentation only. The build configuration added in 0.1.2 is now linked
+  from the places the question is actually asked: the list of formats that
+  decode says it is a default rather than a fact, and the repository's map of
+  where things live has a row for making the library smaller.
+
 ## 0.1.2
 
 - The image formats the native library carries decoders for, and the cargo
