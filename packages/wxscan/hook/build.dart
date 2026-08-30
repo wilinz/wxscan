@@ -12,7 +12,7 @@ import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 import 'package:native_toolchain_rust/native_toolchain_rust.dart';
 
-import 'tflite.dart';
+import 'package:wxscan/src/hook/tflite.dart';
 
 void main(List<String> args) async {
   await build(args, (input, output) async {

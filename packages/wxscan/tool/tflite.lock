@@ -1,4 +1,4 @@
-# Pinned TFLite C library archives, used by hook/tflite.dart.
+# Pinned TFLite C library archives, used by lib/src/hook/tflite.dart.
 #
 # To upgrade, run: tool/update_tflite_lock.sh [tag]
 # which downloads each archive and rewrites the checksums below.
