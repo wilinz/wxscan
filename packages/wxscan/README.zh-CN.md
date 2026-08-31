@@ -6,7 +6,8 @@ Flutter 的二维码解码，底层是 `wechat_qrcode` 算法的 Rust 移植：C
 解码。
 
 这个包解图片和原始像素缓冲，不开相机。要实时扫码用
-[`wxscan_live`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan_live)，
+[`wxscan_live`](https://pub.dev/packages/wxscan_live)
+（[源码](https://github.com/wilinz/wxscan/tree/main/packages/wxscan_live)），
 它在原生侧驱动相机，从 Swift 和 Kotlin 调本包的原生库。
 
 <img src="https://raw.githubusercontent.com/wilinz/wxscan/main/docs/demo.webp" width="300"
@@ -192,7 +193,8 @@ final outcome = await WxScanner.use((scanner) => scanner.scanImage(bytes));
 错，而空结果会把这个错伪装成「这帧里什么都没有」。
 
 扫描器还可以借给
-[`wxscan_live`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan_live)，写成
+[`wxscan_live`](https://pub.dev/packages/wxscan_live)
+（[源码](https://github.com/wilinz/wxscan/tree/main/packages/wxscan_live)），写成
 `WxScanController(scanner: scanner)`。这样一个既扫实时又扫相册的应用只有一个扫描器，
 内存里也只有一份权重。controller 只是借用，从不释放它。
 

@@ -17,7 +17,11 @@ import 'package:crypto/crypto.dart';
 
 /// What a platform's TFLite artifact turned into on disk.
 class TfliteLibrary {
-  TfliteLibrary({required this.file, required this.linkName, required this.isStatic});
+  TfliteLibrary({
+    required this.file,
+    required this.linkName,
+    required this.isStatic,
+  });
 
   /// The extracted library.
   final File file;
@@ -54,6 +58,11 @@ Map<String, String> readLock(Directory packageRoot) {
 
 /// Downloads and extracts the library for [os] and [architecture].
 ///
+/// [iosSdk] separates an iPhone build from a simulator one, which are different
+/// archives and are not interchangeable: linking the device library into a
+/// simulator binary fails outright. It is null off iOS, where there is nothing
+/// to separate.
+///
 /// Everything lands under [cache], which the hook runner keeps between builds,
 /// so a rebuild re-uses what is already there.
 Future<TfliteLibrary> fetchTflite({
@@ -61,7 +70,9 @@ Future<TfliteLibrary> fetchTflite({
   required Architecture architecture,
   required Directory packageRoot,
   required Directory cache,
+  IOSSdk? iosSdk,
 }) async {
+  final isSimulator = iosSdk == IOSSdk.iPhoneSimulator;
   final lock = readLock(packageRoot);
   String need(String key) =>
       lock[key] ?? (throw StateError('wxscan: $key missing from tflite.lock'));
@@ -71,32 +82,68 @@ Future<TfliteLibrary> fetchTflite({
   // what is matched inside.
   final version = need('TFLITE_VERSION');
   final repo = need('TFLITE_REPO');
-  final (slug, ext, libName, isStatic) = switch ((os, architecture)) {
-    (OS.android, Architecture.arm64) =>
-      ('android_arm64', 'tar.gz', 'libtensorflowlite_c.so', false),
-    (OS.android, Architecture.arm) =>
-      ('android_arm', 'tar.gz', 'libtensorflowlite_c.so', false),
-    (OS.android, Architecture.x64) =>
-      ('android_x64', 'tar.gz', 'libtensorflowlite_c.so', false),
+  // Matched on the names rather than on the `OS` and `Architecture` constants
+  // themselves: from code_assets 2.0.0 those override `==` so that a custom
+  // target can compare equal, which disqualifies them as constant patterns.
+  // The names are the stable identifiers either way.
+  final (slug, ext, libName, isStatic) = switch ((os.name, architecture.name)) {
+    ('android', 'arm64') => (
+      'android_arm64',
+      'tar.gz',
+      'libtensorflowlite_c.so',
+      false,
+    ),
+    ('android', 'arm') => (
+      'android_arm',
+      'tar.gz',
+      'libtensorflowlite_c.so',
+      false,
+    ),
+    ('android', 'x64') => (
+      'android_x64',
+      'tar.gz',
+      'libtensorflowlite_c.so',
+      false,
+    ),
     // Static, because that is how an iOS application takes a C library: there
     // is no rpath to load a .dylib from. The simulator archive holds both
     // slices in one archive, which a linker reads as the one slice of its own.
-    (OS.iOS, _) when !_isSimulator && architecture == Architecture.arm64 =>
-      ('ios_device', 'tar.gz', 'libtensorflowlite_c.a', true),
-    (OS.iOS, _) when _isSimulator =>
-      ('ios_simulator', 'tar.gz', 'libtensorflowlite_c.a', true),
+    ('ios', 'arm64') when !isSimulator => (
+      'ios_device',
+      'tar.gz',
+      'libtensorflowlite_c.a',
+      true,
+    ),
+    ('ios', _) when isSimulator => (
+      'ios_simulator',
+      'tar.gz',
+      'libtensorflowlite_c.a',
+      true,
+    ),
     // One archive holds both macOS slices; it is thinned below to whichever
     // one this call is for. Architectures are named rather than matched with
     // `_` so that anything else — a macOS target Apple has not shipped —
     // falls through to the error at the end instead of being handed a
     // library that cannot hold it.
-    (OS.macOS, Architecture.arm64 || Architecture.x64) =>
-      ('darwin_universal', 'tar.gz', 'libtensorflowlite_c.dylib', false),
-    (OS.linux, Architecture.x64) =>
-      ('linux_amd64', 'tar.gz', 'libtensorflowlite_c.so', false),
-    (OS.linux, Architecture.arm64) =>
-      ('linux_arm64', 'tar.gz', 'libtensorflowlite_c.so', false),
-    (OS.windows, _) => ('windows_amd64', 'zip', 'tensorflowlite_c.dll', false),
+    ('macos', 'arm64' || 'x64') => (
+      'darwin_universal',
+      'tar.gz',
+      'libtensorflowlite_c.dylib',
+      false,
+    ),
+    ('linux', 'x64') => (
+      'linux_amd64',
+      'tar.gz',
+      'libtensorflowlite_c.so',
+      false,
+    ),
+    ('linux', 'arm64') => (
+      'linux_arm64',
+      'tar.gz',
+      'libtensorflowlite_c.so',
+      false,
+    ),
+    ('windows', _) => ('windows_amd64', 'zip', 'tensorflowlite_c.dll', false),
     _ => throw StateError('wxscan: no TFLite build for $os/$architecture'),
   };
   final archiveName = 'tflite_c_${version}_$slug.$ext';
@@ -121,10 +168,13 @@ Future<TfliteLibrary> fetchTflite({
     );
   }
 
-  // The macOS archive is universal; each build gets the slice it asked for.
-  // Its install name is already @rpath/libtensorflowlite_c.dylib, which the
-  // Dart tooling reads to rewrite the dependency path.
-  if (os == OS.macOS) {
+  // The macOS archive and the iOS simulator one are both universal; each build
+  // gets the slice it asked for. On macOS the install name is already
+  // @rpath/libtensorflowlite_c.dylib, which the Dart tooling reads to rewrite
+  // the dependency path. On the simulator it is rustc rather than the linker
+  // that reads the archive, and it stops at `Unsupported archive identifier`
+  // on a universal one, so passing both slices through is not an option.
+  if (os == OS.macOS || isSimulator) {
     out = _thin(out, architecture, cache.uri.resolve('$slug/'), libName);
   }
   return TfliteLibrary(
@@ -133,12 +183,6 @@ Future<TfliteLibrary> fetchTflite({
     isStatic: isStatic,
   );
 }
-
-/// Whether this is a simulator build. The hook input does not distinguish the
-/// two, so the environment Xcode sets is what is left to go on.
-bool get _isSimulator =>
-    (Platform.environment['SDKROOT'] ?? '').contains('Simulator') ||
-    Platform.environment['PLATFORM_NAME'] == 'iphonesimulator';
 
 /// Downloads [url] to [out] unless it is already there with the right digest.
 Future<File> _download(String url, File out, String wantSha256) async {
@@ -173,7 +217,7 @@ Future<File> _download(String url, File out, String wantSha256) async {
 String _sha256(File f) => sha256.convert(f.readAsBytesSync()).toString();
 
 /// Extracts the first entry [matches] accepts from [archive] to [out].
-/// Cuts one architecture out of a macOS library that holds several.
+/// Cuts one architecture out of a library that holds several.
 ///
 /// A hook is called once per target architecture, and the Dart tooling that
 /// bundles what it returns cannot read a universal one: `dart test` stops at
@@ -186,10 +230,10 @@ String _sha256(File f) => sha256.convert(f.readAsBytesSync()).toString();
 /// A library that already holds one architecture is returned untouched, so
 /// this costs nothing where the release is not universal.
 File _thin(File fat, Architecture architecture, Uri dir, String libName) {
-  final arch = switch (architecture) {
-    Architecture.arm64 => 'arm64',
-    Architecture.x64 => 'x86_64',
-    _ => throw StateError('wxscan: no macOS TFLite build for $architecture'),
+  final arch = switch (architecture.name) {
+    'arm64' => 'arm64',
+    'x64' => 'x86_64',
+    _ => throw StateError('wxscan: no TFLite slice for $architecture'),
   };
 
   final archs = Process.runSync('lipo', ['-archs', fat.path]);
@@ -204,8 +248,10 @@ File _thin(File fat, Architecture architecture, Uri dir, String libName) {
     return fat;
   }
   if (!held.contains(arch)) {
-    throw StateError('wxscan: ${fat.path} holds $held, which does not include '
-        '$arch');
+    throw StateError(
+      'wxscan: ${fat.path} holds $held, which does not include '
+      '$arch',
+    );
   }
 
   final out = File.fromUri(dir.resolve('$arch/$libName'));
@@ -215,7 +261,13 @@ File _thin(File fat, Architecture architecture, Uri dir, String libName) {
   // an interrupted lipo must not leave a truncated library under a name that
   // says it is finished.
   final part = File('${out.path}.part');
-  final r = Process.runSync('lipo', ['-thin', arch, fat.path, '-output', part.path]);
+  final r = Process.runSync('lipo', [
+    '-thin',
+    arch,
+    fat.path,
+    '-output',
+    part.path,
+  ]);
   if (r.exitCode != 0) {
     throw StateError('wxscan: lipo -thin $arch failed: ${r.stderr}');
   }

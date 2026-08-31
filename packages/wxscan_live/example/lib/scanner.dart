@@ -15,7 +15,8 @@ class UnreadableImage implements Exception {
   const UnreadableImage();
 
   @override
-  String toString() => 'wxscan: that file is not a picture this device can read';
+  String toString() =>
+      'wxscan: that file is not a picture this device can read';
 }
 
 /// Image decoding, plus the models the camera plugin needs.
@@ -106,8 +107,8 @@ class Scanner {
       // asset" FlutterError, which is the only way to tell them apart here.
       weightsProblem = e.toString().contains('Unable to load asset')
           ? 'detect.tflite and sr.tflite are not in assets/models/. The '
-              'published package does not carry them — see the README in '
-              'that directory for where to get them.'
+                'published package does not carry them — see the README in '
+                'that directory for where to get them.'
           : 'the weights are there but did not load: $e';
       detectModel = null;
       srModel = null;
@@ -126,11 +127,14 @@ class Scanner {
     // them. Rare, and indistinguishable from a missing file on screen unless
     // it is said here.
     if (!_nnEnabled) {
-      weightsProblem ??= 'the weights loaded but the runtime would not take '
+      weightsProblem ??=
+          'the weights loaded but the runtime would not take '
           'them, so the detector is off';
     }
-    _log('scanner ready: detector $_nnEnabled, '
-        'sr ${_scanner!.hasSuperResolution}');
+    _log(
+      'scanner ready: detector $_nnEnabled, '
+      'sr ${_scanner!.hasSuperResolution}',
+    );
     return _nnEnabled;
   }
 
@@ -181,13 +185,17 @@ class Scanner {
       final outcome = await _scanPathOrNull(file.path);
       if (outcome != null) return (file: file, outcome: outcome);
     }
-    return (file: file, outcome: await scanImageBytes(await file.readAsBytes()));
+    return (
+      file: file,
+      outcome: await scanImageBytes(await file.readAsBytes()),
+    );
   }
 
   /// Scans a file the way [pickAndScan] does, for callers that already have a
   /// path — a device test, say, which has no one to work the picker.
   static Future<ScanOutcome> scanPicked(String path) async =>
-      (await _scanPathOrNull(path)) ?? scanImageBytes(await XFile(path).readAsBytes());
+      (await _scanPathOrNull(path)) ??
+      scanImageBytes(await XFile(path).readAsBytes());
 
   /// The native reader, or null when it declined the file.
   static Future<ScanOutcome?> _scanPathOrNull(String path) async {
@@ -207,9 +215,11 @@ class Scanner {
   /// which is a different thing from finding no code in it and wants saying
   /// differently.
   static Future<ScanOutcome> scanImageBytes(Uint8List bytes) async {
-    _log('picture: ${bytes.length} bytes, '
-        'scanner ${_scanner == null ? "MISSING" : "ready"}, '
-        'detector ${_scanner?.hasDetector}, sr ${_scanner?.hasSuperResolution}');
+    _log(
+      'picture: ${bytes.length} bytes, '
+      'scanner ${_scanner == null ? "MISSING" : "ready"}, '
+      'detector ${_scanner?.hasDetector}, sr ${_scanner?.hasSuperResolution}',
+    );
     // The platform's own decoder first. It reads everything the device can
     // show, HEIC included — which is what an iPhone's photo library is full of
     // and what `package:image` cannot open, and a file it could not open used
@@ -246,16 +256,21 @@ class Scanner {
     // The conversion to grayscale is left to the scanner.
     final rgb = decoded.convert(numChannels: 3, format: img.Format.uint8);
     _log('package:image: ${rgb.width}x${rgb.height} rgb');
-    return _report('rgb', await scanRgb(rgb.toUint8List(), rgb.width, rgb.height));
+    return _report(
+      'rgb',
+      await scanRgb(rgb.toUint8List(), rgb.width, rgb.height),
+    );
   }
 
   /// Says what a scan came back with, which is the one thing a failure report
   /// from a device cannot be guessed at without.
   static ScanOutcome _report(String path, ScanOutcome outcome) {
-    _log('$path -> frame ${outcome.width}x${outcome.height}, '
-        '${outcome.results.length} decoded, '
-        '${outcome.candidates.length} candidates'
-        '${outcome.results.isEmpty ? "" : ": ${outcome.results.first.text}"}');
+    _log(
+      '$path -> frame ${outcome.width}x${outcome.height}, '
+      '${outcome.results.length} decoded, '
+      '${outcome.candidates.length} candidates'
+      '${outcome.results.isEmpty ? "" : ": ${outcome.results.first.text}"}',
+    );
     return outcome;
   }
 
@@ -294,7 +309,7 @@ class Scanner {
       final msg = first == null
           ? 'selftest: nothing found (${elapsed}ms)'
           : 'selftest: ok (${elapsed}ms) -> ${first.text} '
-              '(v${first.version}/${first.ecLevel}/${first.charset})';
+                '(v${first.version}/${first.ecLevel}/${first.charset})';
       _log(msg);
       return msg;
     } catch (e) {
@@ -310,7 +325,9 @@ class Scanner {
     try {
       final data = await rootBundle.load('assets/test/qr_sample.png');
       final decoded = img.decodeImage(data.buffer.asUint8List());
-      if (decoded == null) return 'selftest-native: could not decode the sample';
+      if (decoded == null) {
+        return 'selftest-native: could not decode the sample';
+      }
       final rgb = decoded.convert(numChannels: 3, format: img.Format.uint8);
       final gray = img.grayscale(rgb);
       final buf = Uint8List(gray.width * gray.height);
@@ -319,8 +336,11 @@ class Scanner {
         buf[i++] = p.r.toInt();
       }
       // The binding's frame path, without a camera: nothing is opened here.
-      final outcome =
-          await WxScanController.selfTestNative(buf, gray.width, gray.height);
+      final outcome = await WxScanController.selfTestNative(
+        buf,
+        gray.width,
+        gray.height,
+      );
       final first = outcome.results.isEmpty ? null : outcome.results.first;
       final msg = 'selftest-native: ${first?.text ?? 'nothing found'}';
       _log(msg);

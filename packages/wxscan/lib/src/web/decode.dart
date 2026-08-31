@@ -73,10 +73,7 @@ Future<DecodedImage?> decodeImage(Uint8List data) async {
 
   final _ImageBitmap bitmap;
   try {
-    bitmap = await _createImageBitmap(
-      _Blob([data.toJS].toJS),
-      options,
-    ).toDart;
+    bitmap = await _createImageBitmap(_Blob([data.toJS].toJS), options).toDart;
   } catch (_) {
     // The browser rejects what it cannot decode, which is the same answer the
     // native path gives as UnsupportedFormat rather than an exception type of

@@ -95,8 +95,11 @@ class _FakePlatform extends WxScanPlatform {
   }
 
   @override
-  Future<Map<String, dynamic>?> zoomRange() async =>
-      {'min': 1.0, 'max': 8.0, 'current': 3.0};
+  Future<Map<String, dynamic>?> zoomRange() async => {
+    'min': 1.0,
+    'max': 8.0,
+    'current': 3.0,
+  };
 
   @override
   Future<Uint8List?> grabFrame() async => Uint8List.fromList([1, 2, 3]);
@@ -116,8 +119,7 @@ class _FakePlatform extends WxScanPlatform {
     required int width,
     required int height,
     required int rotation,
-  }) async =>
-      '{"w":$width,"h":$height,"results":[],"candidates":[]}';
+  }) async => '{"w":$width,"h":$height,"results":[],"candidates":[]}';
 }
 
 void main() {
@@ -179,16 +181,18 @@ void main() {
     expect(c.value.resolution, WxResolution.max);
   });
 
-  test('zoom reads back what the device clamped to, not what was asked',
-      () async {
-    final c = await opened();
-    fake.clampZoomTo = 2.5;
+  test(
+    'zoom reads back what the device clamped to, not what was asked',
+    () async {
+      final c = await opened();
+      fake.clampZoomTo = 2.5;
 
-    final applied = await c.setZoom(9);
-    expect(fake.lastZoom, 9);
-    expect(applied, 2.5);
-    expect(c.value.zoom, 2.5);
-  });
+      final applied = await c.setZoom(9);
+      expect(fake.lastZoom, 9);
+      expect(applied, 2.5);
+      expect(c.value.zoom, 2.5);
+    },
+  );
 
   test('zoomRange refreshes the current value', () async {
     final c = await opened();
@@ -264,19 +268,30 @@ void main() {
       return c;
     }
 
-    test('a second initialize takes the camera, and the first is told',
-        () async {
-      final a = await opened();
-      final b = await second();
+    test(
+      'a second initialize takes the camera, and the first is told',
+      () async {
+        final a = await opened();
+        final b = await second();
 
-      expect(b.value.isInitialized, isTrue);
-      expect(a.value.isInitialized, isFalse,
-          reason: 'it does not have a camera any more');
-      expect(a.value.error, isA<WxCameraLost>(),
-          reason: 'and it can say why, rather than going quiet');
-      expect(a.value.textureId, -1,
-          reason: 'the texture it would draw belongs to b');
-    });
+        expect(b.value.isInitialized, isTrue);
+        expect(
+          a.value.isInitialized,
+          isFalse,
+          reason: 'it does not have a camera any more',
+        );
+        expect(
+          a.value.error,
+          isA<WxCameraLost>(),
+          reason: 'and it can say why, rather than going quiet',
+        );
+        expect(
+          a.value.textureId,
+          -1,
+          reason: 'the texture it would draw belongs to b',
+        );
+      },
+    );
 
     test('the controller that lost the camera does not close it', () async {
       // The defect this replaced: the second controller believed it owned the
@@ -286,28 +301,40 @@ void main() {
 
       a.dispose();
       controller = null;
-      expect(fake.disposed, isFalse,
-          reason: "a is not holding the camera, so it closes nothing");
+      expect(
+        fake.disposed,
+        isFalse,
+        reason: "a is not holding the camera, so it closes nothing",
+      );
 
       b.dispose();
       expect(fake.disposed, isTrue);
-      expect(fake.lastDisposedSession, 2,
-          reason: 'and it names the session it opened, not whatever is open');
+      expect(
+        fake.lastDisposedSession,
+        2,
+        reason: 'and it names the session it opened, not whatever is open',
+      );
     });
 
-    test('a controller whose initialize threw still closes the camera',
-        () async {
-      // There is no session to name — the throw came before one was handed
-      // back — but the platform may be holding a camera half open, and this
-      // controller is the only one that could have left it that way.
-      fake.failInitialize = true;
-      final c = WxScanController();
-      await expectLater(c.initialize(), throwsA(isA<PlatformException>()));
-      c.dispose();
+    test(
+      'a controller whose initialize threw still closes the camera',
+      () async {
+        // There is no session to name — the throw came before one was handed
+        // back — but the platform may be holding a camera half open, and this
+        // controller is the only one that could have left it that way.
+        fake.failInitialize = true;
+        final c = WxScanController();
+        await expectLater(c.initialize(), throwsA(isA<PlatformException>()));
+        c.dispose();
 
-      expect(fake.disposed, isTrue);
-      expect(fake.lastDisposedSession, 0, reason: 'it has no session to name');
-    });
+        expect(fake.disposed, isTrue);
+        expect(
+          fake.lastDisposedSession,
+          0,
+          reason: 'it has no session to name',
+        );
+      },
+    );
 
     test('a controller that never opened a camera closes nothing', () async {
       final a = await opened();
@@ -341,8 +368,11 @@ void main() {
 
       expect(a.value.isInitialized, isTrue);
       expect(a.value.error, isNull, reason: 'the loss it reported is over');
-      expect(b.value.error, isA<WxCameraLost>(),
-          reason: 'and b is the one told this time');
+      expect(
+        b.value.error,
+        isA<WxCameraLost>(),
+        reason: 'and b is the one told this time',
+      );
     });
   });
 
@@ -392,8 +422,11 @@ void main() {
       await c.initialize(detectModelPath: '/tmp/detect.tflite');
 
       expect(fake.lastScannerHandle, isNot(0));
-      expect(fake.lastDetectModelPath, isNull,
-          reason: 'the lent scanner already holds its weights');
+      expect(
+        fake.lastDetectModelPath,
+        isNull,
+        reason: 'the lent scanner already holds its weights',
+      );
     });
   });
 

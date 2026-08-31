@@ -44,9 +44,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _openScanner() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const ScanPage()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const ScanPage()));
   }
 
   Future<void> _decodeAPicture() async {
@@ -70,10 +70,12 @@ class _HomePageState extends State<HomePage> {
         // symbol and the decoder could not read it — too small in the frame,
         // or too blurred — which is worth saying rather than claiming there
         // was nothing there.
-        _say(found.candidates.isEmpty
-            ? 'No QR code found in that picture'
-            : 'A code was spotted but could not be read — it may be too small '
-                'in the picture, or too blurred');
+        _say(
+          found.candidates.isEmpty
+              ? 'No QR code found in that picture'
+              : 'A code was spotted but could not be read — it may be too small '
+                    'in the picture, or too blurred',
+        );
         return;
       }
       // Several codes in one picture: the reader has to say which, and can
@@ -92,9 +94,7 @@ class _HomePageState extends State<HomePage> {
         results = [chosen];
       }
       await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => ResultPage(results: results),
-        ),
+        MaterialPageRoute<void>(builder: (_) => ResultPage(results: results)),
       );
     } finally {
       if (mounted) setState(() => _decoding = false);
@@ -102,8 +102,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _say(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -131,7 +132,9 @@ class _HomePageState extends State<HomePage> {
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
                   child: TextButton.icon(
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(builder: (_) => const AboutPage()),
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AboutPage(),
+                      ),
                     ),
                     icon: const Icon(Icons.info_outline, size: 18),
                     label: const Text('About wxscan and its source'),
@@ -147,38 +150,41 @@ class _HomePageState extends State<HomePage> {
 
   /// Everything above the foot of the page, and the only part that scrolls.
   Widget _entries(ThemeData theme) => ListView(
-        padding: const EdgeInsets.fromLTRB(20, 32, 20, 8),
-        children: [
-          Text('wxscan', style: theme.textTheme.displaySmall),
-          const SizedBox(height: 8),
-          Text(
-            'QR scanning that reads the codes other scanners give up on: '
-            'a neural network finds the symbol, a second one sharpens it, '
-            'and nothing leaves this device.',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 28),
-          _Entry(
-            icon: Icons.qr_code_scanner,
-            title: 'Live scan',
-            subtitle: 'Point the camera at a code. Several in one frame '
-                'come back together, and you pick.',
-            onTap: _openScanner,
-          ),
-          const SizedBox(height: 12),
-          _Entry(
-            icon: Icons.photo_library_outlined,
-            title: 'Decode a picture',
-            subtitle: 'A screenshot or a photo from the library, read '
-                'without the camera.',
-            onTap: _decodeAPicture,
-            busy: _decoding,
-          ),
-          const SizedBox(height: 28),
-          _engineLine(theme),
-        ],
-      );
+    padding: const EdgeInsets.fromLTRB(20, 32, 20, 8),
+    children: [
+      Text('wxscan', style: theme.textTheme.displaySmall),
+      const SizedBox(height: 8),
+      Text(
+        'QR scanning that reads the codes other scanners give up on: '
+        'a neural network finds the symbol, a second one sharpens it, '
+        'and nothing leaves this device.',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      const SizedBox(height: 28),
+      _Entry(
+        icon: Icons.qr_code_scanner,
+        title: 'Live scan',
+        subtitle:
+            'Point the camera at a code. Several in one frame '
+            'come back together, and you pick.',
+        onTap: _openScanner,
+      ),
+      const SizedBox(height: 12),
+      _Entry(
+        icon: Icons.photo_library_outlined,
+        title: 'Decode a picture',
+        subtitle:
+            'A screenshot or a photo from the library, read '
+            'without the camera.',
+        onTap: _decodeAPicture,
+        busy: _decoding,
+      ),
+      const SizedBox(height: 28),
+      _engineLine(theme),
+    ],
+  );
 
   /// Which engine the weights left us with. Worth saying plainly: it is the
   /// difference between reading a code across a room and needing it held up to
@@ -203,8 +209,9 @@ class _HomePageState extends State<HomePage> {
         Expanded(
           child: Text(
             text,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ],
@@ -238,15 +245,17 @@ class _HomePageState extends State<HomePage> {
                 Text(
                   'Image processing only, so small and distant codes will be '
                   'missed. Codes held up to the lens still read.',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
                 if (Scanner.weightsProblem case final why?) ...[
                   const SizedBox(height: 8),
                   Text(
                     why,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: scheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ],
@@ -310,14 +319,17 @@ class _Entry extends StatelessWidget {
                     Text(
                       subtitle,
                       style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(Icons.chevron_right,
-                  color: theme.colorScheme.onSurfaceVariant),
+              Icon(
+                Icons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ],
           ),
         ),

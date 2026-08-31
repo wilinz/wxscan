@@ -18,7 +18,12 @@ passing through Dart; the preview is a Flutter texture backed by the same buffer
   s.license          = { :type => 'Apache-2.0' }
   s.author           = { 'wilinz' => 'wilinzza@gmail.com' }
   s.source           = { :path => '.' }
-  s.source_files     = 'Classes/**/*'
+  # The Swift Package Manager layout, which CocoaPods builds from as well so
+  # that there is one copy of the sources. `Package.swift` beside them is the
+  # other half; see it for why the C header is a target of its own there.
+  s.source_files     = 'wxscan_live/Sources/wxscan_live/**/*.swift',
+                       'wxscan_live/Sources/wxscan_c/**/*.{h,c}'
+  s.public_header_files = 'wxscan_live/Sources/wxscan_c/include/**/*.h'
   s.dependency 'Flutter'
   s.platform         = :ios, '13.0'
   s.swift_version    = '5.0'

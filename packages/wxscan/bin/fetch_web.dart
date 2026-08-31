@@ -74,8 +74,10 @@ Future<int> _run(List<String> args) async {
 
   final packageRoot = await _packageRoot();
   if (packageRoot == null) {
-    stderr.writeln('wxscan: could not find the package. Run this from '
-        'an application that depends on wxscan.');
+    stderr.writeln(
+      'wxscan: could not find the package. Run this from '
+      'an application that depends on wxscan.',
+    );
     return 1;
   }
   final bundled = Directory('${packageRoot.path}/lib/src/web/assets');
@@ -139,9 +141,11 @@ Future<int> _run(List<String> args) async {
     stdout.writeln('  ${artifact.name}  $where');
   }
 
-  stdout.writeln('\nPut into ${into.path}. If that is not `web/wxscan`, point '
-      'the package at it with configureWxScanWeb() from '
-      'package:wxscan/web.dart.');
+  stdout.writeln(
+    '\nPut into ${into.path}. If that is not `web/wxscan`, point '
+    'the package at it with configureWxScanWeb() from '
+    'package:wxscan/web.dart.',
+  );
   return 0;
 }
 
@@ -163,8 +167,10 @@ Future<File> _fetch({
 
   final url = 'https://github.com/$repo/releases/download/$tag/$name';
   if (offline) {
-    throw _FetchFailure('wxscan: $name is not in the cache and --offline was '
-        'given.\n  It would have come from $url');
+    throw _FetchFailure(
+      'wxscan: $name is not in the cache and --offline was '
+      'given.\n  It would have come from $url',
+    );
   }
 
   stdout.writeln('  fetching $name from $tag');
@@ -172,14 +178,16 @@ Future<File> _fetch({
 
   final got = sha256.convert(bytes).toString();
   if (got != want) {
-    throw _FetchFailure('''
+    throw _FetchFailure(
+      '''
 wxscan: $name is not what tool/web.lock pins.
   from     $url
   pinned   $want
   received $got
 
   A release asset can be replaced, so nothing here uses bytes the lock does not
-  name. If the release changed on purpose, re-pin it with tool/stamp_web.sh.''');
+  name. If the release changed on purpose, re-pin it with tool/stamp_web.sh.''',
+    );
   }
 
   cached.parent.createSync(recursive: true);
@@ -196,9 +204,11 @@ Future<List<int>> _get(String url) async {
   try {
     final response = await client.getUrl(Uri.parse(url)).then((r) => r.close());
     if (response.statusCode != 200) {
-      throw _FetchFailure('wxscan: $url answered ${response.statusCode}.\n'
-          '  The tag in tool/web.lock may not exist, or may not carry this '
-          'asset.');
+      throw _FetchFailure(
+        'wxscan: $url answered ${response.statusCode}.\n'
+        '  The tag in tool/web.lock may not exist, or may not carry this '
+        'asset.',
+      );
     }
     final bytes = <int>[];
     await for (final chunk in response) {
@@ -256,11 +266,11 @@ class _Lock {
   }
 
   (String, String, String) pin(_Artifact artifact) => switch (artifact) {
-        _Artifact.scanner => (scannerRepo, scannerTag, scannerSha),
-        _Artifact.tfliteJs => (tfliteRepo, tfliteTag, tfliteJsSha),
-        _Artifact.tfliteWasm => (tfliteRepo, tfliteTag, tfliteWasmSha),
-        _Artifact.worker => throw StateError('the worker is not fetched'),
-      };
+    _Artifact.scanner => (scannerRepo, scannerTag, scannerSha),
+    _Artifact.tfliteJs => (tfliteRepo, tfliteTag, tfliteJsSha),
+    _Artifact.tfliteWasm => (tfliteRepo, tfliteTag, tfliteWasmSha),
+    _Artifact.worker => throw StateError('the worker is not fetched'),
+  };
 }
 
 /// Where downloads are kept between runs.
@@ -301,7 +311,9 @@ String? _option(List<String> args, String name) {
 
 String _size(File file) {
   final kb = file.lengthSync() / 1024;
-  return kb < 1024 ? '${kb.round()} KB' : '${(kb / 1024).toStringAsFixed(1)} MB';
+  return kb < 1024
+      ? '${kb.round()} KB'
+      : '${(kb / 1024).toStringAsFixed(1)} MB';
 }
 
 /// This package's root.

@@ -95,22 +95,22 @@ class WxScanValue {
     bool? modelsLoaded,
     Object? error,
     bool clearError = false,
-  }) =>
-      WxScanValue(
-        isInitialized: isInitialized ?? this.isInitialized,
-        textureId: textureId ?? this.textureId,
-        previewSize: previewSize ?? this.previewSize,
-        isScanning: isScanning ?? this.isScanning,
-        torchEnabled: torchEnabled ?? this.torchEnabled,
-        zoom: zoom ?? this.zoom,
-        resolution: resolution ?? this.resolution,
-        nativeReady: nativeReady ?? this.nativeReady,
-        modelsLoaded: modelsLoaded ?? this.modelsLoaded,
-        error: clearError ? null : (error ?? this.error),
-      );
+  }) => WxScanValue(
+    isInitialized: isInitialized ?? this.isInitialized,
+    textureId: textureId ?? this.textureId,
+    previewSize: previewSize ?? this.previewSize,
+    isScanning: isScanning ?? this.isScanning,
+    torchEnabled: torchEnabled ?? this.torchEnabled,
+    zoom: zoom ?? this.zoom,
+    resolution: resolution ?? this.resolution,
+    nativeReady: nativeReady ?? this.nativeReady,
+    modelsLoaded: modelsLoaded ?? this.modelsLoaded,
+    error: clearError ? null : (error ?? this.error),
+  );
 
   @override
-  String toString() => 'WxScanValue(initialized: $isInitialized, '
+  String toString() =>
+      'WxScanValue(initialized: $isInitialized, '
       'texture: $textureId, preview: $previewSize, scanning: $isScanning, '
       'torch: $torchEnabled, zoom: $zoom, models: $modelsLoaded)';
 }
@@ -178,8 +178,7 @@ class WxCameraLost implements Exception {
   const WxCameraLost();
 
   @override
-  String toString() =>
-      'wxscan_live: another controller took the camera over';
+  String toString() => 'wxscan_live: another controller took the camera over';
 }
 
 /// The scanning camera. CameraX on Android, AVFoundation on Apple platforms.
@@ -246,8 +245,8 @@ class WxScanController extends ValueNotifier<WxScanValue> {
   WxScanController({
     WxScanner? scanner,
     WxResolution resolution = WxResolution.p720,
-  })  : _scanner = scanner,
-        super(WxScanValue(resolution: resolution));
+  }) : _scanner = scanner,
+       super(WxScanValue(resolution: resolution));
 
   static WxScanPlatform get _platform => WxScanPlatform.instance;
 
@@ -332,7 +331,9 @@ class WxScanController extends ValueNotifier<WxScanValue> {
   }) async {
     _checkAlive();
     if (detectModel != null && detectModelPath != null) {
-      throw ArgumentError('wxscan_live: pass detectModel or detectModelPath, not both');
+      throw ArgumentError(
+        'wxscan_live: pass detectModel or detectModelPath, not both',
+      );
     }
     if (srModel != null && srModelPath != null) {
       throw ArgumentError('wxscan_live: pass srModel or srModelPath, not both');

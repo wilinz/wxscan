@@ -20,9 +20,11 @@ void main() {
       final bytes = await File('test/$name').readAsBytes();
       final outcome = await Scanner.scanImageBytes(bytes);
       // ignore: avoid_print
-      print('$name -> ${outcome.width}x${outcome.height}, '
-          '${outcome.results.length} decoded, '
-          '${outcome.candidates.length} candidates');
+      print(
+        '$name -> ${outcome.width}x${outcome.height}, '
+        '${outcome.results.length} decoded, '
+        '${outcome.candidates.length} candidates',
+      );
       expect(outcome.results, isNotEmpty);
     });
   }

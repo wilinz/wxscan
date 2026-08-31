@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.4
+
+- **Swift Package Manager support.** `ios/wxscan_live/Package.swift` and its
+  macOS twin are the Swift Package form of the plugin; the podspecs stay and
+  build the same sources from the same place, so CocoaPods keeps working until
+  it goes read-only. The Swift files moved from `ios/Classes/` to
+  `ios/wxscan_live/Sources/wxscan_live/`, which is where both build systems now
+  read them.
+
+  `wxscan.h` is a target of its own, because a Swift Package Manager target
+  cannot mix Swift and C. Under CocoaPods the header still arrives through the
+  pod's umbrella header, so the import of it is guarded with
+  `#if canImport(wxscan_c)` and is simply absent there.
+
+  Verified both ways on both platforms: CocoaPods and Swift Package Manager,
+  iOS device, iOS simulator and macOS.
+- Depends on `wxscan` 0.1.4, which fixes iOS simulator builds.
+- Packaging: the `description` fits the 60-180 characters pub.dev asks for, and
+  every file is `dart format` clean.
+
 ## 0.1.3
 
 - Documentation only. The native library section now says that what that

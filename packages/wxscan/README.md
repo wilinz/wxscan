@@ -7,8 +7,9 @@ CNN-based detection, super resolution, and decoding.
 
 This package decodes images and raw pixel buffers. It does not open a camera —
 for live scanning use
-[`wxscan_live`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan_live), which drives the camera
-natively and calls this package's native library from Swift and Kotlin.
+[`wxscan_live`](https://pub.dev/packages/wxscan_live)
+([source](https://github.com/wilinz/wxscan/tree/main/packages/wxscan_live)), which drives
+the camera natively and calls this package's native library from Swift and Kotlin.
 
 <img src="https://raw.githubusercontent.com/wilinz/wxscan/main/docs/demo.webp" width="300"
      alt="Two QR codes in one camera frame, each marked; tapping one opens its decoded
@@ -219,7 +220,8 @@ result. A buffer that does not match its width and height is a mistake in the
 call, and an empty outcome would hide it as a frame with nothing in it.
 
 A scanner can also be lent to
-[`wxscan_live`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan_live) — `WxScanController(scanner:
+[`wxscan_live`](https://pub.dev/packages/wxscan_live)
+([source](https://github.com/wilinz/wxscan/tree/main/packages/wxscan_live)) — `WxScanController(scanner:
 scanner)` — so an application that scans both live and from the photo library
 holds one scanner rather than two, with one copy of the weights in memory. The
 controller borrows it and never disposes it.

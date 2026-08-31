@@ -19,9 +19,9 @@ import 'result.dart';
 ScanOutcome parseFrameJson(String json) {
   final map = jsonDecode(json) as Map<String, dynamic>;
   List<ScanPoint> pts(List<dynamic> flat) => [
-        for (var i = 0; i < flat.length && i + 1 < flat.length; i += 2)
-          ScanPoint((flat[i] as num).toDouble(), (flat[i + 1] as num).toDouble()),
-      ];
+    for (var i = 0; i < flat.length && i + 1 < flat.length; i += 2)
+      ScanPoint((flat[i] as num).toDouble(), (flat[i + 1] as num).toDouble()),
+  ];
 
   return ScanOutcome(
     width: (map['w'] as num?)?.toInt() ?? 0,
@@ -43,8 +43,7 @@ ScanOutcome parseFrameJson(String json) {
         ),
     ],
     candidates: [
-      for (final c in (map['candidates'] as List? ?? const []))
-        pts(c as List),
+      for (final c in (map['candidates'] as List? ?? const [])) pts(c as List),
     ],
   );
 }

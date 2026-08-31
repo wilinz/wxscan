@@ -11,8 +11,9 @@ arrives in Dart is the outcome of each frame; the preview is a Flutter texture
 backed by the same buffer.
 
 To decode a still image instead, use
-[`wxscan`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan), which exposes the same
-scanner to Dart.
+[`wxscan`](https://pub.dev/packages/wxscan)
+([source](https://github.com/wilinz/wxscan/tree/main/packages/wxscan)), which exposes the
+same scanner to Dart.
 
 <img src="https://raw.githubusercontent.com/wilinz/wxscan/main/docs/demo.webp" width="300"
      alt="Two QR codes in one camera frame, each marked; tapping one opens its decoded
@@ -415,14 +416,16 @@ by an Android engine bug.
 ## The native library
 
 Nothing native is built here. The scanner comes from
-[`wxscan`](https://github.com/wilinz/wxscan/tree/main/packages/wxscan), whose build hook produces
+[`wxscan`](https://pub.dev/packages/wxscan)
+([source](https://github.com/wilinz/wxscan/tree/main/packages/wxscan)), whose build hook produces
 it as a Dart code asset. This package depends on that one, so an application
 using either gets exactly one copy — and configures it in the same place,
 under `hooks: user_defines: wxscan:` in its own `pubspec.yaml`, whether it
 depends on `wxscan` directly or not. An application that only ever scans camera
 frames carries no image decoders at all, which is most of a megabyte on
 Android; see
-[Configuring the build](https://github.com/wilinz/wxscan/tree/main/packages/wxscan#configuring-the-build).
+[Configuring the build](https://pub.dev/packages/wxscan#configuring-the-build)
+([source](https://github.com/wilinz/wxscan/tree/main/packages/wxscan#configuring-the-build)).
 
 The Swift and Kotlin code calls the scanner's C ABI directly, because camera
 frames never pass through Dart. A code asset is loaded by the Dart runtime
@@ -430,6 +433,14 @@ rather than linked by Xcode or Gradle, so those entry points are resolved at run
 time: on Android Flutter puts the asset in the APK's `lib/<abi>/`, where
 `System.loadLibrary` already looks, and on iOS and macOS `WxScanNative.swift`
 opens the bundled framework and reads the symbols with `dlsym`.
+
+On iOS and macOS the plugin ships both build systems: `ios/wxscan_live/Package.swift`
+for the Swift Package Manager and `ios/wxscan_live.podspec` for CocoaPods, reading
+the same sources under `ios/wxscan_live/Sources/`. Nothing has to be configured
+either way. `wxscan.h` sits in a target of its own because a Swift Package
+Manager target cannot mix Swift and C; under CocoaPods it arrives through the
+pod's umbrella header instead, which is why the Swift files import it behind
+`#if canImport(wxscan_c)`.
 
 ## Licence
 

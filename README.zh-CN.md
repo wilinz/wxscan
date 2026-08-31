@@ -134,6 +134,23 @@ controller.scans.listen((outcome) {
 
 ## 为什么用它
 
+大家最常拿来比的是
+[`mobile_scanner`](https://pub.dev/packages/mobile_scanner)，所以最要紧的两条差别
+放在最前面。
+
+**从上到下都开源，连权重也是。** 算法是 `wechat_qrcode` 的 Rust 移植，Apache-2.0；
+CNN 权重放在 [wxscan-weights](https://github.com/wilinz/wxscan-weights)，同样的
+协议，旁边就是生成它们的脚本。这里没有一样东西是你没法自己重建、审计或者重新训练的。
+`mobile_scanner` 本身是开源的，但真正干活的那部分不是：它在 Android 上包的是 Google
+ML Kit，在 iOS 和 macOS 上包的是 Apple Vision，两个都闭源；ML Kit 的 unbundled 版本
+还要靠 Google Play 服务下载——这是一个你随包发出去、看不见内部、也钉不住版本的依赖。
+
+**一个解码器，全平台。** 同一份 Rust 库能编到 Android、iOS、macOS、Linux 和
+Windows，也能编成 WebAssembly 跑在浏览器里。所以 `dart test`、桌面工具、服务端和网页
+跑的是同一个解码器，而不是每个平台换一个引擎。`mobile_scanner` 根本不支持 Linux 和
+Windows；它支持的那几个平台上，读码的也各是各的——ML Kit、Vision，或者浏览器那三种
+后端之一——行为自然也就不一致。
+
 **小码、远处的码也扫得到。** 先用一个神经网络在画面里找出可能是码的位置，再用第二个
 把每一块放大，然后才解码。有没有这两步，区别就是「码得怼到镜头前」和「隔着半个房间
 也能扫」。微信自己的扫描器就是这么干的。

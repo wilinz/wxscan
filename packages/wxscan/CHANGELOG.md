@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.4
+
+- **iOS simulator builds work.** Three things were wrong at once, and each hid
+  the next. The hook picked the device TFLite archive for a simulator build,
+  because it read Xcode's `SDKROOT` out of an environment the hook runner
+  scrubs; it now takes `IOSSdk` from the build configuration, which is where
+  the answer actually is. The simulator archive is universal, and rustc stops
+  at `Unsupported archive identifier` on one, so it is thinned to the slice
+  being built, as the macOS library already was. And `rust-toolchain.toml` was
+  missing `x86_64-apple-ios`, which `flutter build ios --simulator` asks for
+  alongside the arm64 slice.
+- `example/` now holds a runnable command-line example, which is also what
+  pub.dev shows on the package page.
+- The `description` fits the 60-180 characters pub.dev asks for, and every file
+  is `dart format` clean.
+- `code_assets` is allowed up to 2.0.0. Its one breaking change is that `OS` and
+  `Architecture` override `==`, which disqualifies them as constant patterns, so
+  the build hook matches on `os.name` and `architecture.name` instead. Which
+  major is actually resolved is `native_toolchain_rust`'s call, and it still asks
+  for 1.x.
+- The library doc pointed at `wxscan` for live scanning where it meant
+  `wxscan_live`.
+
 ## 0.1.3
 
 - Documentation only. The build configuration added in 0.1.2 is now linked

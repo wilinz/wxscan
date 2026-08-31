@@ -115,7 +115,6 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   double _zoomRate = 0;
   DateTime _zoomSteppedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-
   @override
   void initState() {
     super.initState();
@@ -276,9 +275,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     _controller!.setScanning(false);
     HapticFeedback.mediumImpact();
     Navigator.of(context)
-        .push(MaterialPageRoute(
-          builder: (_) => ResultPage(results: results),
-        ))
+        .push(MaterialPageRoute(builder: (_) => ResultPage(results: results)))
         .then((_) {
           _navigating = false;
           _multiWaitSince = null;
@@ -384,16 +381,19 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     _zoomSteppedAt = now;
     if (dt <= 0) return;
 
-    _zoomRate =
-        math.min(1.0, _zoomRate + dt / (_kZoomRampIn.inMilliseconds / 1000));
+    _zoomRate = math.min(
+      1.0,
+      _zoomRate + dt / (_kZoomRampIn.inMilliseconds / 1000),
+    );
     // The fraction of the remaining distance a step of this length closes.
     // Written as an exponential so the walk looks the same however often the
     // timer actually fires.
     final k = 1 - math.exp(-dt / (_kZoomSettle.inMilliseconds / 1000));
 
     final logFrom = math.log(from);
-    final next =
-        math.exp(logFrom + (math.log(_zoomTarget) - logFrom) * k * _zoomRate);
+    final next = math.exp(
+      logFrom + (math.log(_zoomTarget) - logFrom) * k * _zoomRate,
+    );
 
     _zoomBusy = true;
     _controller!.setZoom(next).then((actual) {
@@ -512,7 +512,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   /// The largest candidate box, with coordinates normalised to [0,1] in each
   /// dimension.
   ({double cx, double cy, double w, double h})? _largestCandidateBox(
-      ScanOutcome f) {
+    ScanOutcome f,
+  ) {
     if (f.width == 0 || f.height == 0) return null;
     ({double cx, double cy, double w, double h})? best;
     var bestArea = 0.0;
@@ -642,8 +643,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapDown: (d) {
-            final hit =
-                pickHitTest(d.localPosition, BoxFit.cover, size, frame);
+            final hit = pickHitTest(d.localPosition, BoxFit.cover, size, frame);
             if (hit != null) {
               _openResults([hit]);
             } else {
@@ -707,9 +707,11 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       picked = await Scanner.pickAndScan();
     } on UnreadableImage {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('That file is not a picture this device can read'),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('That file is not a picture this device can read'),
+          ),
+        );
       }
       return;
     }
@@ -718,12 +720,16 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     if (picked == null || !mounted) return;
     final found = picked.outcome;
     if (found.results.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(found.candidates.isEmpty
-            ? 'No QR code found in that picture'
-            : 'A code was spotted but could not be read — it may be too small '
-                'in the picture, or too blurred'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            found.candidates.isEmpty
+                ? 'No QR code found in that picture'
+                : 'A code was spotted but could not be read — it may be too small '
+                      'in the picture, or too blurred',
+          ),
+        ),
+      );
       return;
     }
     _navigating = true;
@@ -748,11 +754,9 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       results = [chosen];
       if (!mounted) return;
     }
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ResultPage(results: results),
-      ),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => ResultPage(results: results)));
     _navigating = false;
     await _controller!.setScanning(true);
   }
@@ -792,44 +796,46 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         _exitPick();
       },
       child: Scaffold(
-      backgroundColor: Colors.black,
-      // The zoom gesture wraps everything: as a layer inside the Stack it
-      // would be shadowed by the hit-testing of the layers above. It does not
-      // conflict with the tap to pick inside -- the gesture arena settles it,
-      // one finger to the tap and two to the zoom.
-      body: GestureDetector(
-        behavior: HitTestBehavior.deferToChild,
-        onScaleStart: _onScaleStart,
-        onScaleUpdate: _onScaleUpdate,
-        child: _Shell(
-          child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (_controller != null) _buildPreview(_controller!),
-            // Decoration, and nothing that can be pressed. Without this a
-            // CustomPaint takes every tap that reaches it: RenderCustomPaint
-            // answers hitTestSelf with true unless its painter says otherwise,
-            // so the viewfinder alone would swallow the taps meant for the
-            // layer below it.
-            const IgnorePointer(child: _ScanLineOverlay()),
-            if (_lastFrame != null && _controller != null && _pickFrame == null)
-              IgnorePointer(
-                child: CustomPaint(
-                  painter: _CodeMarkerPainter(frame: _lastFrame!),
-                ),
-              ),
-            if (_controller != null) _buildFocusLayer(),
-            if (_focusPoint != null) _FocusReticle(at: _focusPoint!),
-            // Below the top and bottom bars, or its opaque hit-testing would
-            // swallow taps meant for those buttons.
-            if (_pickFrame != null) _buildPicker(_pickFrame!),
-            _buildTopBar(),
-            if (_error != null) _buildError(_error!),
-            _buildBottomBar(),
-          ],
+        backgroundColor: Colors.black,
+        // The zoom gesture wraps everything: as a layer inside the Stack it
+        // would be shadowed by the hit-testing of the layers above. It does not
+        // conflict with the tap to pick inside -- the gesture arena settles it,
+        // one finger to the tap and two to the zoom.
+        body: GestureDetector(
+          behavior: HitTestBehavior.deferToChild,
+          onScaleStart: _onScaleStart,
+          onScaleUpdate: _onScaleUpdate,
+          child: _Shell(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (_controller != null) _buildPreview(_controller!),
+                // Decoration, and nothing that can be pressed. Without this a
+                // CustomPaint takes every tap that reaches it: RenderCustomPaint
+                // answers hitTestSelf with true unless its painter says otherwise,
+                // so the viewfinder alone would swallow the taps meant for the
+                // layer below it.
+                const IgnorePointer(child: _ScanLineOverlay()),
+                if (_lastFrame != null &&
+                    _controller != null &&
+                    _pickFrame == null)
+                  IgnorePointer(
+                    child: CustomPaint(
+                      painter: _CodeMarkerPainter(frame: _lastFrame!),
+                    ),
+                  ),
+                if (_controller != null) _buildFocusLayer(),
+                if (_focusPoint != null) _FocusReticle(at: _focusPoint!),
+                // Below the top and bottom bars, or its opaque hit-testing would
+                // swallow taps meant for those buttons.
+                if (_pickFrame != null) _buildPicker(_pickFrame!),
+                _buildTopBar(),
+                if (_error != null) _buildError(_error!),
+                _buildBottomBar(),
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -894,9 +900,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
           icon: const Icon(Icons.arrow_back),
         ),
         const SizedBox(width: 12),
-        const Expanded(
-          child: _Hint('Tap a marker to open that code'),
-        ),
+        const Expanded(child: _Hint('Tap a marker to open that code')),
       ],
     );
   }
@@ -908,76 +912,76 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
 
   Widget _buildScanBar() {
     return Row(
-          // Top-aligned, so a second run of chips grows downwards instead of
-          // pushing the button and the title off the line they share. Each
-          // side centres itself within [_barLine] instead.
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: _barLine,
-              child: Row(
+      // Top-aligned, so a second run of chips grows downwards instead of
+      // pushing the button and the title off the line they share. Each
+      // side centres itself within [_barLine] instead.
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: _barLine,
+          child: Row(
+            children: [
+              // Reached by a push from the home screen, so there has to be
+              // a way back that is not the system gesture: iOS and macOS
+              // do not have Android's, and nobody guesses at a tap on the
+              // picture.
+              IconButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+                tooltip: 'Back',
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.black38,
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(Icons.arrow_back),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Scan',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        // A narrow phone cannot hold the title and both chips on one
+        // line, so they wrap under each other rather than overflowing.
+        // One run sits centred on the button's line; two make the box
+        // taller and fill it.
+        Expanded(
+          // ConstrainedBox and a shrink-wrapping Align, not a Container
+          // with an alignment: that one grows to whatever it is offered,
+          // and what it is offered here is the height of the screen, which
+          // put the chips down in the middle of the picture.
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: _barLine),
+            child: Align(
+              alignment: Alignment.centerRight,
+              heightFactor: 1,
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 8,
+                runSpacing: 6,
                 children: [
-                  // Reached by a push from the home screen, so there has to be
-                  // a way back that is not the system gesture: iOS and macOS
-                  // do not have Android's, and nobody guesses at a tap on the
-                  // picture.
-                  IconButton(
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    tooltip: 'Back',
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.black38,
-                      foregroundColor: Colors.white,
-                    ),
-                    icon: const Icon(Icons.arrow_back),
+                  // The resolution step, raised by a tap. Useful when a
+                  // dense code will not come out.
+                  _chip(
+                    _resolution.label,
+                    onTap: _controller == null ? null : _cycleResolution,
+                    icon: Icons.hd_outlined,
                   ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Scan',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  _chip(
+                    _nnEnabled ? 'CNN detection on' : 'Image processing only',
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
-            // A narrow phone cannot hold the title and both chips on one
-            // line, so they wrap under each other rather than overflowing.
-            // One run sits centred on the button's line; two make the box
-            // taller and fill it.
-            Expanded(
-              // ConstrainedBox and a shrink-wrapping Align, not a Container
-              // with an alignment: that one grows to whatever it is offered,
-              // and what it is offered here is the height of the screen, which
-              // put the chips down in the middle of the picture.
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: _barLine),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  heightFactor: 1,
-                  child: Wrap(
-                    alignment: WrapAlignment.end,
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      // The resolution step, raised by a tap. Useful when a
-                      // dense code will not come out.
-                      _chip(
-                        _resolution.label,
-                        onTap: _controller == null ? null : _cycleResolution,
-                        icon: Icons.hd_outlined,
-                      ),
-                      _chip(_nnEnabled
-                          ? 'CNN detection on'
-                          : 'Image processing only'),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -996,8 +1000,10 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
             Icon(icon, size: 14, color: Colors.white70),
             const SizedBox(width: 4),
           ],
-          Text(text,
-              style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          Text(
+            text,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
         ],
       ),
     );
@@ -1049,13 +1055,16 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
           // A phone in landscape has barely any room below the viewfinder,
           // and 40 of it would put the buttons off the bottom.
           padding: EdgeInsets.only(
-              bottom: MediaQuery.sizeOf(context).height < 560 ? 12 : 40),
+            bottom: MediaQuery.sizeOf(context).height < 560 ? 12 : 40,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _Hint(_zoom > 1
-                  ? '${_zoom.toStringAsFixed(1)}x - pinch to zoom'
-                  : 'Put the QR code in the frame to scan it'),
+              _Hint(
+                _zoom > 1
+                    ? '${_zoom.toStringAsFixed(1)}x - pinch to zoom'
+                    : 'Put the QR code in the frame to scan it',
+              ),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1063,7 +1072,9 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                   if (_hasTorch)
                     IconButton.filledTonal(
                       onPressed: () async {
-                        await _controller!.setTorch(!_controller!.value.torchEnabled);
+                        await _controller!.setTorch(
+                          !_controller!.value.torchEnabled,
+                        );
                         setState(() {});
                       },
                       icon: Icon(
@@ -1357,7 +1368,9 @@ class _ScanLinePainter extends CustomPainter {
 
     // Faded in at the top and out at the bottom, so the return to the top
     // reads as the sweep starting again rather than as the line jumping.
-    final fade = math.min(progress / 0.12, (1 - progress) / 0.12).clamp(0.0, 1.0);
+    final fade = math
+        .min(progress / 0.12, (1 - progress) / 0.12)
+        .clamp(0.0, 1.0);
     if (fade <= 0) return;
 
     // A trail above the line, longer than a square's would have been: at the
@@ -1520,7 +1533,10 @@ class _CodeMarkerPainter extends CustomPainter {
     for (final r in frame.results) {
       final path = Path();
       for (var i = 0; i < r.corners.length; i++) {
-        final p = Offset(r.corners[i].dx * scale + dx, r.corners[i].dy * scale + dy);
+        final p = Offset(
+          r.corners[i].dx * scale + dx,
+          r.corners[i].dy * scale + dy,
+        );
         if (i == 0) {
           path.moveTo(p.dx, p.dy);
         } else {

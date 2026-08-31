@@ -144,6 +144,28 @@ controller.scans.listen((outcome) {
 
 ## Why this one
 
+The comparison most people are making is with
+[`mobile_scanner`](https://pub.dev/packages/mobile_scanner), so the two
+differences that matter most come first.
+
+**Open all the way down, weights included.** The algorithm is a Rust port of
+`wechat_qrcode` under Apache-2.0, and the CNN weights live in
+[wxscan-weights](https://github.com/wilinz/wxscan-weights) under the same
+licence, next to the scripts that produced them. There is no blob in here you
+cannot rebuild, audit or retrain. `mobile_scanner` is open source itself, but
+the thing doing the reading is not: it wraps Google's ML Kit on Android and
+Apple's Vision on iOS and macOS, both closed, and ML Kit's unbundled variant is
+downloaded by Google Play services — a dependency you ship, cannot inspect, and
+cannot pin.
+
+**One decoder, every platform.** The same Rust library builds for Android, iOS,
+macOS, Linux and Windows, and compiles to WebAssembly for the browser, so
+`dart test`, a desktop tool, a server and a web page all run the identical
+decoder rather than a different engine per platform. `mobile_scanner` has no
+Linux or Windows support at all, and on each platform it supports you get a
+different reader — ML Kit, Vision, or one of three browser backends — with the
+behaviour differences that implies.
+
 **It sees small and distant codes.** A neural network locates candidate symbols
 in the frame and a second one upscales each crop before decoding. That is the
 difference between a scanner that needs the code held up to the lens and one

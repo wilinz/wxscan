@@ -13,6 +13,7 @@ import 'bindings.dart';
 /// ABI even though the types do not. Nothing dereferences the token: the
 /// library looks the handle up in its own table.
 final ffi.Pointer<ffi.NativeFinalizerFunction> scannerFinalizer =
-    ffi.Native.addressOf<ffi.NativeFunction<ffi.Void Function(WxScanScannerId)>>(
-      wxscan_scanner_release,
-    ).cast();
+    ffi.Native.addressOf<
+          ffi.NativeFunction<ffi.Void Function(WxScanScannerId)>
+        >(wxscan_scanner_release)
+        .cast();

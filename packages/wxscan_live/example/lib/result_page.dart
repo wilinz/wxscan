@@ -15,7 +15,9 @@ class ResultPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(results.length > 1 ? 'Results (${results.length})' : 'Result'),
+        title: Text(
+          results.length > 1 ? 'Results (${results.length})' : 'Result',
+        ),
       ),
       // Held to a readable measure: a decoded URL stretched across a desktop
       // window is one long line the eye cannot get back from.
@@ -68,17 +70,15 @@ class _ResultCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            SelectableText(
-              result.text,
-              style: theme.textTheme.bodyLarge,
-            ),
+            SelectableText(result.text, style: theme.textTheme.bodyLarge),
             const SizedBox(height: 16),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 _Chip(label: 'Version ${result.version}'),
-                if (result.ecLevel.isNotEmpty) _Chip(label: 'EC ${result.ecLevel}'),
+                if (result.ecLevel.isNotEmpty)
+                  _Chip(label: 'EC ${result.ecLevel}'),
                 _Chip(label: result.charset),
               ],
             ),
@@ -100,9 +100,9 @@ class _ResultCard extends StatelessWidget {
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: result.text));
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Copied')),
-                      );
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(const SnackBar(content: Text('Copied')));
                     }
                   },
                   icon: const Icon(Icons.copy, size: 18),

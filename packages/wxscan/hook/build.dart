@@ -28,6 +28,10 @@ void main(List<String> args) async {
     final tflite = await fetchTflite(
       os: code.targetOS,
       architecture: code.targetArchitecture,
+      // Device and simulator are different archives. The configuration says
+      // which one this build is for; reading it off the environment does not
+      // work, because the hook runner scrubs what Xcode sets.
+      iosSdk: code.targetOS == OS.iOS ? code.iOS.targetSdk : null,
       packageRoot: Directory.fromUri(input.packageRoot),
       cache: Directory.fromUri(input.outputDirectoryShared.resolve('tflite/')),
     );

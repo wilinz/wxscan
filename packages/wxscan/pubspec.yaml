@@ -1,6 +1,6 @@
 name: wxscan
-description: QR decoding for Dart and Flutter - a Rust port of the wechat_qrcode algorithm (CNN detection, super resolution, decoding). Images and raw pixel buffers; for a camera see wxscan_live.
-version: 0.1.3
+description: QR decoding for Dart and Flutter - a Rust port of the wechat_qrcode algorithm (CNN detection, super resolution). Reads images and raw pixel buffers.
+version: 0.1.4
 homepage: https://github.com/wilinz/wxscan
 repository: https://github.com/wilinz/wxscan
 issue_tracker: https://github.com/wilinz/wxscan/issues
@@ -25,7 +25,11 @@ dependencies:
   ffi: ^2.1.0
   # Used by the build hook.
   hooks: ^2.2.0
-  code_assets: ^1.2.1
+  # Widened past 1.x for code_assets 2.0.0, whose only breaking change is that
+  # `OS` and `Architecture` override `==`; the hook matches on their names, so
+  # either major works. Which one is resolved is native_toolchain_rust's call,
+  # and it still asks for 1.x.
+  code_assets: ">=1.2.1 <3.0.0"
   native_toolchain_rust: ^1.0.6
   archive: ^4.0.0
   crypto: ^3.0.0

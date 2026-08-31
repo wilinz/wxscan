@@ -27,12 +27,15 @@ void main() {
   for (final name in ['qr_clean.png', 'qr_photo.jpg', 'qr_sample.png']) {
     testWidgets('reads $name', (tester) async {
       await Scanner.init();
-      final bytes =
-          (await rootBundle.load('assets/test/$name')).buffer.asUint8List();
+      final bytes = (await rootBundle.load(
+        'assets/test/$name',
+      )).buffer.asUint8List();
       final outcome = await Scanner.scanImageBytes(bytes);
-      debugPrint('[probe] $name -> ${outcome.width}x${outcome.height}, '
-          '${outcome.results.length} decoded, '
-          '${outcome.candidates.length} candidates');
+      debugPrint(
+        '[probe] $name -> ${outcome.width}x${outcome.height}, '
+        '${outcome.results.length} decoded, '
+        '${outcome.candidates.length} candidates',
+      );
       expect(outcome.results, isNotEmpty);
     });
 
@@ -44,11 +47,14 @@ void main() {
       final data = await rootBundle.load('assets/test/$name');
       final file = File('${Directory.systemTemp.path}/probe_$name')
         ..writeAsBytesSync(
-            data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+        );
       addTearDown(file.deleteSync);
       final outcome = await Scanner.scanPicked(file.path);
-      debugPrint('[probe] path $name -> ${outcome.width}x${outcome.height}, '
-          '${outcome.results.length} decoded');
+      debugPrint(
+        '[probe] path $name -> ${outcome.width}x${outcome.height}, '
+        '${outcome.results.length} decoded',
+      );
       expect(outcome.results, isNotEmpty);
     });
   }

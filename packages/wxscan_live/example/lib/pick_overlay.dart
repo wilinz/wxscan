@@ -111,7 +111,10 @@ class PickPainter extends CustomPainter {
 
       final c = pickCenter(r, fit, size, frame);
       canvas.drawCircle(
-          c, kPickRadius + 6, Paint()..color = _green.withValues(alpha: 0.25));
+        c,
+        kPickRadius + 6,
+        Paint()..color = _green.withValues(alpha: 0.25),
+      );
       canvas.drawCircle(c, kPickRadius, Paint()..color = _green);
 
       // A white arrow pointing right.

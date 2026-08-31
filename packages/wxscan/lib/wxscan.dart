@@ -2,8 +2,8 @@
 /// detection, super resolution and decoding.
 ///
 /// This package decodes images and raw pixel buffers. It does not open a
-/// camera; for live scanning use the `wxscan` package, which drives the camera
-/// natively and links the same library.
+/// camera; for live scanning use the `wxscan_live` package, which drives the
+/// camera natively and links the same library.
 ///
 /// ```dart
 /// final scanner = await WxScanner.create(

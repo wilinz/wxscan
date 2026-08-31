@@ -45,14 +45,14 @@ class WxScanPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<WxScanValue>(
-        valueListenable: controller,
-        builder: (context, value, _) {
-          if (!value.isInitialized) return const SizedBox.shrink();
-          return kIsWeb
-              // The browser's frames are in a <video> the platform view holds,
-              // so there is no texture id to give and nothing to rebuild on.
-              ? const HtmlElementView(viewType: wxScanPreviewViewType)
-              : Texture(textureId: value.textureId);
-        },
-      );
+    valueListenable: controller,
+    builder: (context, value, _) {
+      if (!value.isInitialized) return const SizedBox.shrink();
+      return kIsWeb
+          // The browser's frames are in a <video> the platform view holds,
+          // so there is no texture id to give and nothing to rebuild on.
+          ? const HtmlElementView(viewType: wxScanPreviewViewType)
+          : Texture(textureId: value.textureId);
+    },
+  );
 }

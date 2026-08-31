@@ -60,7 +60,8 @@ class WxScanWorker {
     final client = WxScanWorker._(_Worker(workerUrl, options));
     client._listen();
 
-    final withModels = tfliteUrl != null && detectModel != null && srModel != null;
+    final withModels =
+        tfliteUrl != null && detectModel != null && srModel != null;
     final reply = await client._send(
       'init',
       (message) {
@@ -77,9 +78,12 @@ class WxScanWorker {
       // and a still-image scanner in one application are handed the same
       // weights — and transferring would empty them on the way out.
     );
-    client.hasDetector = reply.getProperty<JSBoolean>('hasDetector'.toJS).toDart;
-    client.hasSuperResolution =
-        reply.getProperty<JSBoolean>('hasSuperResolution'.toJS).toDart;
+    client.hasDetector = reply
+        .getProperty<JSBoolean>('hasDetector'.toJS)
+        .toDart;
+    client.hasSuperResolution = reply
+        .getProperty<JSBoolean>('hasSuperResolution'.toJS)
+        .toDart;
     return client;
   }
 
@@ -92,8 +96,11 @@ class WxScanWorker {
       if (data.getProperty<JSBoolean>('ok'.toJS).toDart) {
         completer.complete(data);
       } else {
-        completer.completeError(StateError(
-            'wxscan: ${data.getProperty<JSString>('error'.toJS).toDart}'));
+        completer.completeError(
+          StateError(
+            'wxscan: ${data.getProperty<JSString>('error'.toJS).toDart}',
+          ),
+        );
       }
     }).toJS;
     _worker.onerror = ((JSObject event) {
@@ -154,26 +161,30 @@ class WxScanWorker {
     void Function(JSObject message)? extra,
   ) async {
     final buffer = pixels.buffer;
-    final reply = await _send(
-      command,
-      (message) {
-        message
-          ..setProperty('pixels'.toJS, buffer.toJS)
-          ..setProperty('width'.toJS, width.toJS)
-          ..setProperty('height'.toJS, height.toJS);
-        extra?.call(message);
-      },
-      transfer: [buffer.toJS],
-    );
+    final reply = await _send(command, (message) {
+      message
+        ..setProperty('pixels'.toJS, buffer.toJS)
+        ..setProperty('width'.toJS, width.toJS)
+        ..setProperty('height'.toJS, height.toJS);
+      extra?.call(message);
+    }, transfer: [buffer.toJS]);
     return reply.getProperty<JSString?>('json'.toJS)?.toDart;
   }
 
   /// Decodes a colour image and hands back the document itself, for a caller
   /// that forwards documents.
   Future<String?> scanPixelsJson(
-          Uint8List pixels, int width, int height, int format) =>
-      _scanJson('scanPixels', pixels, width, height,
-          (m) => m.setProperty('format'.toJS, format.toJS));
+    Uint8List pixels,
+    int width,
+    int height,
+    int format,
+  ) => _scanJson(
+    'scanPixels',
+    pixels,
+    width,
+    height,
+    (m) => m.setProperty('format'.toJS, format.toJS),
+  );
 
   /// Decodes an upright, tightly packed grayscale image.
   Future<ScanOutcome> scanGray(Uint8List gray, int width, int height) =>
@@ -182,9 +193,17 @@ class WxScanWorker {
   /// Decodes a colour image, converting it to grayscale first. [format] is a
   /// `WxScanPixelFormat` value.
   Future<ScanOutcome> scanPixels(
-          Uint8List pixels, int width, int height, int format) =>
-      _scan('scanPixels', pixels, width, height,
-          (m) => m.setProperty('format'.toJS, format.toJS));
+    Uint8List pixels,
+    int width,
+    int height,
+    int format,
+  ) => _scan(
+    'scanPixels',
+    pixels,
+    width,
+    height,
+    (m) => m.setProperty('format'.toJS, format.toJS),
+  );
 
   /// Decodes a camera frame: a Y plane with a row stride, rotated upright.
   Future<ScanOutcome> scanFrame(
@@ -194,13 +213,12 @@ class WxScanWorker {
     required int rowStride,
     required int rotation,
     required bool mirror,
-  }) =>
-      _scan('scanFrame', plane, width, height, (m) {
-        m
-          ..setProperty('rowStride'.toJS, rowStride.toJS)
-          ..setProperty('rotation'.toJS, rotation.toJS)
-          ..setProperty('mirror'.toJS, mirror.toJS);
-      });
+  }) => _scan('scanFrame', plane, width, height, (m) {
+    m
+      ..setProperty('rowStride'.toJS, rowStride.toJS)
+      ..setProperty('rotation'.toJS, rotation.toJS)
+      ..setProperty('mirror'.toJS, mirror.toJS);
+  });
 
   /// Stops the worker. Using it afterwards throws.
   Future<void> dispose() async {

@@ -118,26 +118,28 @@ void main() {
       expect(scanner.nmsThreshold, lessThan(0));
     });
 
-    test('a mismatched buffer is an ArgumentError, not an empty result',
-        () async {
-      final gray = Uint8List(10);
-      expect(
-        () => scanner.scanGray(gray, 64, 64),
-        throwsA(isA<ArgumentError>()),
-      );
-      expect(
-        () => scanner.scanFrame(gray, 4, 2, rowStride: 2),
-        throwsA(isA<ArgumentError>()),
-      );
-      expect(
-        () => scanner.scanFrame(Uint8List(16), 4, 4, rotation: 45),
-        throwsA(isA<ArgumentError>()),
-      );
-      expect(
-        () => scanner.scanPixels(Uint8List(16), 4, 4),
-        throwsA(isA<ArgumentError>()),
-      );
-    });
+    test(
+      'a mismatched buffer is an ArgumentError, not an empty result',
+      () async {
+        final gray = Uint8List(10);
+        expect(
+          () => scanner.scanGray(gray, 64, 64),
+          throwsA(isA<ArgumentError>()),
+        );
+        expect(
+          () => scanner.scanFrame(gray, 4, 2, rowStride: 2),
+          throwsA(isA<ArgumentError>()),
+        );
+        expect(
+          () => scanner.scanFrame(Uint8List(16), 4, 4, rotation: 45),
+          throwsA(isA<ArgumentError>()),
+        );
+        expect(
+          () => scanner.scanPixels(Uint8List(16), 4, 4),
+          throwsA(isA<ArgumentError>()),
+        );
+      },
+    );
 
     test('queued scans all complete on the one worker isolate', () async {
       final gray = Uint8List(48 * 48)..fillRange(0, 48 * 48, 200);
@@ -173,14 +175,16 @@ void main() {
       await scanning;
     });
 
-    test('setting a value after disposal does not escape as an async error',
-        () async {
-      final other = await WxScanner.create();
-      await other.dispose();
-      // The setter throws synchronously; nothing must be left unawaited.
-      expect(() => other.scaleFactor = 0.5, throwsStateError);
-      await Future<void>.delayed(Duration.zero);
-    });
+    test(
+      'setting a value after disposal does not escape as an async error',
+      () async {
+        final other = await WxScanner.create();
+        await other.dispose();
+        // The setter throws synchronously; nothing must be left unawaited.
+        expect(() => other.scaleFactor = 0.5, throwsStateError);
+        await Future<void>.delayed(Duration.zero);
+      },
+    );
 
     test('a rejected setting does not read back as if it took', () {
       final before = scanner.confidenceThreshold;
@@ -241,35 +245,35 @@ void main() {
     // the five layouts agree with each other and with the gray path, which is
     // false the moment that conversion drifts again.
     const modules = [
-    '11111110101111011110001111111',
-    '10000010001111000101001000001',
-    '10111010010100000100101011101',
-    '10111010101011101010001011101',
-    '10111010111111011010001011101',
-    '10000010110000101111101000001',
-    '11111110101010101010101111111',
-    '00000000111110000110000000000',
-    '10001011100000010101011111001',
-    '00010000101100111000011111111',
-    '10001110011100010010101100001',
-    '00110101101110101101101111011',
-    '00000010001010000110110000010',
-    '00111000110111111110001111111',
-    '00000111110101010010111101101',
-    '00100001000010000111110000011',
-    '01010110100111111100100100010',
-    '10110100001101101110101111011',
-    '00101011001110011010100000101',
-    '00100001110010000110110110011',
-    '11110010111101101100111111001',
-    '00000000111010111001100010001',
-    '11111110101001110101101011101',
-    '10000010010101001101100010011',
-    '10111010101011000101111111001',
-    '10111010010110111010010000001',
-    '10111010010001111111110001111',
-    '10000010011110100110111011011',
-    '11111110100101110100111111010'
+      '11111110101111011110001111111',
+      '10000010001111000101001000001',
+      '10111010010100000100101011101',
+      '10111010101011101010001011101',
+      '10111010111111011010001011101',
+      '10000010110000101111101000001',
+      '11111110101010101010101111111',
+      '00000000111110000110000000000',
+      '10001011100000010101011111001',
+      '00010000101100111000011111111',
+      '10001110011100010010101100001',
+      '00110101101110101101101111011',
+      '00000010001010000110110000010',
+      '00111000110111111110001111111',
+      '00000111110101010010111101101',
+      '00100001000010000111110000011',
+      '01010110100111111100100100010',
+      '10110100001101101110101111011',
+      '00101011001110011010100000101',
+      '00100001110010000110110110011',
+      '11110010111101101100111111001',
+      '00000000111010111001100010001',
+      '11111110101001110101101011101',
+      '10000010010101001101100010011',
+      '10111010101011000101111111001',
+      '10111010010110111010010000001',
+      '10111010010001111111110001111',
+      '10000010011110100110111011011',
+      '11111110100101110100111111010',
     ];
     const quiet = 4, scale = 4;
     final side = (modules.length + quiet * 2) * scale;
@@ -319,26 +323,35 @@ void main() {
         (WxPixelFormat.bgra, 4),
       ]) {
         final outcome = await scanner.scanPixels(
-            spread(g, channels), side, side,
-            format: format);
+          spread(g, channels),
+          side,
+          side,
+          format: format,
+        );
         expect(outcome.results.map((r) => r.text), [text], reason: '$format');
       }
     });
   });
 
   group('a scanner built from weight paths', () {
-    test('a path that is not there leaves a scanner that still decodes', () async {
-      // The contract weights have always had: unloadable is not fatal, the
-      // pipeline degrades to plain decoding, and hasDetector says so. A path
-      // that is not there is the same answer, said in the native log with the
-      // path — which is the one thing the caller needs to fix it.
-      final scanner = await WxScanner.create(
-        detectModelPath: '/nowhere/detect.tflite',
-      );
-      addTearDown(scanner.dispose);
-      expect(scanner.hasDetector, isFalse);
-      expect((await scanner.scanPath('test/data/code.png')).results, isNotEmpty);
-    });
+    test(
+      'a path that is not there leaves a scanner that still decodes',
+      () async {
+        // The contract weights have always had: unloadable is not fatal, the
+        // pipeline degrades to plain decoding, and hasDetector says so. A path
+        // that is not there is the same answer, said in the native log with the
+        // path — which is the one thing the caller needs to fix it.
+        final scanner = await WxScanner.create(
+          detectModelPath: '/nowhere/detect.tflite',
+        );
+        addTearDown(scanner.dispose);
+        expect(scanner.hasDetector, isFalse);
+        expect(
+          (await scanner.scanPath('test/data/code.png')).results,
+          isNotEmpty,
+        );
+      },
+    );
 
     test('a file that is not weights is the same', () async {
       final f = File('${Directory.systemTemp.path}/wxscan-not-a-model.bin');
@@ -385,20 +398,29 @@ void main() {
 
       final bytes = await File('test/data/code.png').readAsBytes();
       expect(bytes, isNotEmpty);
-      expect(scanner.scanPathSync('test/data/code.png').results.first.text,
-          outcome.results.first.text);
-    });
-
-    test('a file that is not there is not a picture without a code in it',
-        () async {
-      // The whole point of the status: this must not come back as an empty
-      // outcome, which is what "no code in the picture" looks like.
-      await expectLater(
-        scanner.scanPath('test/data/no_such_file.png'),
-        throwsA(isA<PictureUnreadable>().having(
-            (e) => e.failure, 'failure', PictureReadFailure.unreadable)),
+      expect(
+        scanner.scanPathSync('test/data/code.png').results.first.text,
+        outcome.results.first.text,
       );
     });
+
+    test(
+      'a file that is not there is not a picture without a code in it',
+      () async {
+        // The whole point of the status: this must not come back as an empty
+        // outcome, which is what "no code in the picture" looks like.
+        await expectLater(
+          scanner.scanPath('test/data/no_such_file.png'),
+          throwsA(
+            isA<PictureUnreadable>().having(
+              (e) => e.failure,
+              'failure',
+              PictureReadFailure.unreadable,
+            ),
+          ),
+        );
+      },
+    );
 
     test('a file that is not an image says which of the two it is', () async {
       final tmp = File('${Directory.systemTemp.path}/wxscan_not_an_image.png')
@@ -406,8 +428,13 @@ void main() {
       addTearDown(() => tmp.deleteSync());
       await expectLater(
         scanner.scanPath(tmp.path),
-        throwsA(isA<PictureUnreadable>().having((e) => e.failure, 'failure',
-            PictureReadFailure.unsupportedFormat)),
+        throwsA(
+          isA<PictureUnreadable>().having(
+            (e) => e.failure,
+            'failure',
+            PictureReadFailure.unsupportedFormat,
+          ),
+        ),
       );
     });
   });
@@ -423,41 +450,59 @@ void main() {
     });
     tearDown(() async => scanner.dispose());
 
-    test('decodes, and agrees with the same picture read from its path',
-        () async {
-      final outcome = await scanner.scanImage(png);
-      expect(outcome.results, isNotEmpty);
-      expect(outcome.width, 148);
-      expect(outcome.height, 148);
+    test(
+      'decodes, and agrees with the same picture read from its path',
+      () async {
+        final outcome = await scanner.scanImage(png);
+        expect(outcome.results, isNotEmpty);
+        expect(outcome.width, 148);
+        expect(outcome.height, 148);
 
-      final fromPath = await scanner.scanPath('test/data/code.png');
-      expect(outcome.results.first.text, fromPath.results.first.text);
-      expect(outcome.results.first.corners, fromPath.results.first.corners);
-    });
+        final fromPath = await scanner.scanPath('test/data/code.png');
+        expect(outcome.results.first.text, fromPath.results.first.text);
+        expect(outcome.results.first.corners, fromPath.results.first.corners);
+      },
+    );
 
     test('the synchronous form agrees with the asynchronous one', () async {
       final async = await scanner.scanImage(png);
-      expect(scanner.scanImageSync(png).results.first.text,
-          async.results.first.text);
-    });
-
-    test('bytes that are not a picture say so, with no path to blame it on',
-        () async {
-      await expectLater(
-        scanner.scanImage(Uint8List.fromList('not a picture at all'.codeUnits)),
-        throwsA(isA<PictureUnreadable>()
-            .having((e) => e.failure, 'failure',
-                PictureReadFailure.unsupportedFormat)
-            // There was no file, so nothing should be named as if there were.
-            .having((e) => e.path, 'path', isNull)),
+      expect(
+        scanner.scanImageSync(png).results.first.text,
+        async.results.first.text,
       );
     });
+
+    test(
+      'bytes that are not a picture say so, with no path to blame it on',
+      () async {
+        await expectLater(
+          scanner.scanImage(
+            Uint8List.fromList('not a picture at all'.codeUnits),
+          ),
+          throwsA(
+            isA<PictureUnreadable>()
+                .having(
+                  (e) => e.failure,
+                  'failure',
+                  PictureReadFailure.unsupportedFormat,
+                )
+                // There was no file, so nothing should be named as if there were.
+                .having((e) => e.path, 'path', isNull),
+          ),
+        );
+      },
+    );
 
     test('an empty buffer is a format question rather than a crash', () async {
       await expectLater(
         scanner.scanImage(Uint8List(0)),
-        throwsA(isA<PictureUnreadable>().having((e) => e.failure, 'failure',
-            PictureReadFailure.unsupportedFormat)),
+        throwsA(
+          isA<PictureUnreadable>().having(
+            (e) => e.failure,
+            'failure',
+            PictureReadFailure.unsupportedFormat,
+          ),
+        ),
       );
     });
 
@@ -480,8 +525,10 @@ void main() {
 
     test('the message does not pretend there was a file', () {
       expect(
-        const PictureUnreadable(null, PictureReadFailure.unsupportedFormat)
-            .toString(),
+        const PictureUnreadable(
+          null,
+          PictureReadFailure.unsupportedFormat,
+        ).toString(),
         contains('the image data'),
       );
     });

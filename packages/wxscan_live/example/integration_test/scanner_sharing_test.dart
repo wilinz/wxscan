@@ -49,7 +49,7 @@ Future<void> openCamera(
   Uint8List? detectModel,
   Uint8List? srModel,
 }) async {
-  for (var attempt = 0;; attempt++) {
+  for (var attempt = 0; ; attempt++) {
     try {
       await c.initialize(detectModel: detectModel, srModel: srModel);
       expect(c.value.isInitialized, isTrue);
@@ -89,22 +89,29 @@ void main() {
     sr = await _asset('assets/models/sr.tflite');
   });
 
-  testWidgets('without a lent scanner the camera builds one of its own',
-      (tester) async {
+  testWidgets('without a lent scanner the camera builds one of its own', (
+    tester,
+  ) async {
     final before = WxScanner.liveCount;
 
     final c = WxScanController();
     await openCamera(c, detectModel: detect, srModel: sr);
 
-    expect(WxScanner.liveCount, before + 1,
-        reason: 'the plugin built a scanner, and it is in the same table');
+    expect(
+      WxScanner.liveCount,
+      before + 1,
+      reason: 'the plugin built a scanner, and it is in the same table',
+    );
     expect(c.value.modelsLoaded, isTrue, reason: 'from the weights just sent');
     await expectFramesFlowing(c);
 
     c.dispose();
     await tester.pump(const Duration(milliseconds: 500));
-    expect(WxScanner.liveCount, before,
-        reason: 'and gave it back when the camera closed');
+    expect(
+      WxScanner.liveCount,
+      before,
+      reason: 'and gave it back when the camera closed',
+    );
   });
 
   testWidgets('a lent scanner is borrowed, not copied', (tester) async {
@@ -116,10 +123,16 @@ void main() {
     await openCamera(c, detectModel: detect, srModel: sr);
 
     // The whole point: one scanner, one copy of the weights.
-    expect(WxScanner.liveCount, before + 1,
-        reason: 'the camera took a reference rather than building a second');
-    expect(c.value.modelsLoaded, isTrue,
-        reason: 'asked of the lent scanner, not inferred from weights');
+    expect(
+      WxScanner.liveCount,
+      before + 1,
+      reason: 'the camera took a reference rather than building a second',
+    );
+    expect(
+      c.value.modelsLoaded,
+      isTrue,
+      reason: 'asked of the lent scanner, not inferred from weights',
+    );
     await expectFramesFlowing(c, reason: 'decoding through the lent scanner');
 
     // Closing the camera must not free a scanner the application still holds.
@@ -127,15 +140,19 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(WxScanner.liveCount, before + 1);
     final gray = Uint8List(64 * 64)..fillRange(0, 64 * 64, 255);
-    await expectLater(scanner.scanGray(gray, 64, 64), completes,
-        reason: 'the lent scanner outlived the camera that borrowed it');
+    await expectLater(
+      scanner.scanGray(gray, 64, 64),
+      completes,
+      reason: 'the lent scanner outlived the camera that borrowed it',
+    );
 
     await scanner.dispose();
     expect(WxScanner.liveCount, before);
   });
 
-  testWidgets('the application may let go before the camera does',
-      (tester) async {
+  testWidgets('the application may let go before the camera does', (
+    tester,
+  ) async {
     final before = WxScanner.liveCount;
     final scanner = await WxScanner.create(detectModel: detect, srModel: sr);
     final c = WxScanController(scanner: scanner);
@@ -145,8 +162,11 @@ void main() {
     // side that created the scanner lets go while the camera is still
     // decoding with it.
     await scanner.dispose();
-    expect(WxScanner.liveCount, before + 1,
-        reason: 'the camera still holds a reference');
+    expect(
+      WxScanner.liveCount,
+      before + 1,
+      reason: 'the camera still holds a reference',
+    );
     await expectFramesFlowing(c, reason: 'and goes on decoding with it');
 
     c.dispose();
@@ -154,8 +174,9 @@ void main() {
     expect(WxScanner.liveCount, before, reason: 'the last holder freed it');
   });
 
-  testWidgets('a takeover swaps the scanner, and gives the old one back',
-      (tester) async {
+  testWidgets('a takeover swaps the scanner, and gives the old one back', (
+    tester,
+  ) async {
     // The regression this file was written for, as the ownership rule leaves
     // it. A second controller initializing while the first camera runs used to
     // release the scanner the camera was decoding with and adopt the
@@ -182,15 +203,22 @@ void main() {
     // flight, so the count settles a moment after the call returns.
     await tester.pump(const Duration(seconds: 1));
 
-    expect(WxScanner.liveCount, before + 2,
-        reason: 'two scanners, both held by Dart; the plugin built neither '
-            'and freed neither');
+    expect(
+      WxScanner.liveCount,
+      before + 2,
+      reason:
+          'two scanners, both held by Dart; the plugin built neither '
+          'and freed neither',
+    );
     await expectFramesFlowing(b, reason: 'B decodes through its own scanner');
 
     b.dispose();
     await tester.pump(const Duration(seconds: 1));
-    expect(WxScanner.liveCount, before + 2,
-        reason: 'closing the camera gives back the plugin\'s reference only');
+    expect(
+      WxScanner.liveCount,
+      before + 2,
+      reason: 'closing the camera gives back the plugin\'s reference only',
+    );
 
     a.dispose();
     await tester.pump(const Duration(milliseconds: 500));
@@ -199,8 +227,9 @@ void main() {
     expect(WxScanner.liveCount, before);
   });
 
-  testWidgets('a second controller takes the camera, and the first is told',
-      (tester) async {
+  testWidgets('a second controller takes the camera, and the first is told', (
+    tester,
+  ) async {
     // Found by this file, on a device, and the reason the ownership rule
     // exists. The device has one camera session and the plugin is a singleton
     // over it. A second controller's `initialize` used to take the "already
@@ -227,26 +256,42 @@ void main() {
     await openCamera(b, detectModel: detect, srModel: sr);
     await tester.pump(const Duration(seconds: 1));
 
-    expect(a.value.isInitialized, isFalse,
-        reason: 'A does not have a camera any more');
-    expect(a.value.error, isA<WxCameraLost>(),
-        reason: 'and it was told, rather than going quiet');
-    expect(WxScanner.liveCount, before + 2,
-        reason: "A's scanner, still held by Dart, and the one B had the "
-            'plugin build');
+    expect(
+      a.value.isInitialized,
+      isFalse,
+      reason: 'A does not have a camera any more',
+    );
+    expect(
+      a.value.error,
+      isA<WxCameraLost>(),
+      reason: 'and it was told, rather than going quiet',
+    );
+    expect(
+      WxScanner.liveCount,
+      before + 2,
+      reason:
+          "A's scanner, still held by Dart, and the one B had the "
+          'plugin build',
+    );
     await expectFramesFlowing(b, reason: 'B has the camera now');
 
     // The assertion this test exists for.
     a.dispose();
     await tester.pump(const Duration(seconds: 1));
-    await expectFramesFlowing(b,
-        reason: 'disposing the controller that lost the camera must not '
-            'close the camera that took it');
+    await expectFramesFlowing(
+      b,
+      reason:
+          'disposing the controller that lost the camera must not '
+          'close the camera that took it',
+    );
 
     b.dispose();
     await tester.pump(const Duration(milliseconds: 500));
-    expect(WxScanner.liveCount, before + 1,
-        reason: "B's camera gave back the scanner it built");
+    expect(
+      WxScanner.liveCount,
+      before + 1,
+      reason: "B's camera gave back the scanner it built",
+    );
     await scannerA.dispose();
     expect(WxScanner.liveCount, before);
   });

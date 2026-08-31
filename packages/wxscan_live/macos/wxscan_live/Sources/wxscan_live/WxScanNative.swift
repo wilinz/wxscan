@@ -1,5 +1,13 @@
 import Foundation
 
+// The C declarations. Under Swift Package Manager they live in their own
+// target, because a package target cannot mix Swift and C; under CocoaPods
+// they arrive through the pod's umbrella header and there is no module of this
+// name to import.
+#if canImport(wxscan_c)
+import wxscan_c
+#endif
+
 /// Resolves the scanner's C entry points at run time.
 ///
 /// The library is not linked into this plugin. It is a Dart code asset, built

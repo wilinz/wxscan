@@ -76,10 +76,13 @@ class WxCamera {
   /// The size is a request: a browser gives what the device has, and frames
   /// are read at whatever it settles on.
   static Future<WxCamera> open(int shortSide) async {
-    final video = JSObject()..setProperty('facingMode'.toJS, 'environment'.toJS);
+    final video = JSObject()
+      ..setProperty('facingMode'.toJS, 'environment'.toJS);
     if (shortSide > 0) {
       video.setProperty(
-          'height'.toJS, JSObject()..setProperty('ideal'.toJS, shortSide.toJS));
+        'height'.toJS,
+        JSObject()..setProperty('ideal'.toJS, shortSide.toJS),
+      );
     }
     final constraints = JSObject()
       ..setProperty('video'.toJS, video)
@@ -96,7 +99,9 @@ class WxCamera {
     element
       ..setProperty('playsInline'.toJS, true.toJS)
       ..setProperty(
-          'style'.toJS, 'width:100%;height:100%;object-fit:cover'.toJS);
+        'style'.toJS,
+        'width:100%;height:100%;object-fit:cover'.toJS,
+      );
     await element.play().toDart;
     await _waitForSize(element);
 
@@ -108,7 +113,11 @@ class WxCamera {
     final options = JSObject()
       ..setProperty('willReadFrequently'.toJS, true.toJS);
     return WxCamera._(
-        stream, element, canvas, _Context(canvas.getContext('2d', options)!));
+      stream,
+      element,
+      canvas,
+      _Context(canvas.getContext('2d', options)!),
+    );
   }
 
   /// Waits for the video to know its size, which it does not at `play`.
@@ -173,8 +182,9 @@ class WxCamera {
   }
 
   JSObject? _track() {
-    final tracks =
-        _stream.callMethod<JSArray<JSObject>>('getVideoTracks'.toJS).toDart;
+    final tracks = _stream
+        .callMethod<JSArray<JSObject>>('getVideoTracks'.toJS)
+        .toDart;
     return tracks.isEmpty ? null : tracks.first;
   }
 
@@ -224,7 +234,9 @@ class WxCamera {
   /// Stops the camera. The indicator light goes out here.
   void close() {
     for (final track
-        in _stream.callMethod<JSArray<JSObject>>('getVideoTracks'.toJS).toDart) {
+        in _stream
+            .callMethod<JSArray<JSObject>>('getVideoTracks'.toJS)
+            .toDart) {
       track.callMethod<JSAny?>('stop'.toJS);
     }
     video.srcObject = null;

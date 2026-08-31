@@ -5,7 +5,6 @@ import 'dart:typed_data';
 /// conditional export has both halves.
 Future<(String detect, String sr)> installWeights(
   Future<Uint8List> Function(String assetKey) readAsset,
-) =>
-    throw UnsupportedError(
-      'a browser has no sandbox to copy the weights into; pass the bytes',
-    );
+) => throw UnsupportedError(
+  'a browser has no sandbox to copy the weights into; pass the bytes',
+);

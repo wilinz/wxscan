@@ -93,7 +93,9 @@ abstract class WxScanPlatform {
 class MethodChannelWxScan extends WxScanPlatform {
   static const MethodChannel _method = MethodChannel('wxscan_live');
   static const EventChannel _events = EventChannel('wxscan_live/scan');
-  static const EventChannel _sizeEvents = EventChannel('wxscan_live/preview_size');
+  static const EventChannel _sizeEvents = EventChannel(
+    'wxscan_live/preview_size',
+  );
 
   Stream<String>? _scanEvents;
   Stream<Map<String, dynamic>>? _previewSizeEvents;
@@ -106,20 +108,19 @@ class MethodChannelWxScan extends WxScanPlatform {
     String? detectModelPath,
     String? srModelPath,
     int scannerHandle = 0,
-  }) =>
-      _method.invokeMapMethod<String, dynamic>('initialize', {
-        'shortSide': shortSide,
-        'detectModel': detectModel,
-        'srModel': srModel,
-        // Omitted rather than sent as null, so the platform reads their
-        // absence the same way it reads an absent scanner handle.
-        if (detectModelPath != null) 'detectModelPath': detectModelPath,
-        if (srModelPath != null) 'srModelPath': srModelPath,
-        // Omitted rather than sent as zero: the platform reads its absence as
-        // "build your own", and a zero pointer arriving as a number is a
-        // shape worth never producing.
-        if (scannerHandle != 0) 'scannerHandle': scannerHandle,
-      });
+  }) => _method.invokeMapMethod<String, dynamic>('initialize', {
+    'shortSide': shortSide,
+    'detectModel': detectModel,
+    'srModel': srModel,
+    // Omitted rather than sent as null, so the platform reads their
+    // absence the same way it reads an absent scanner handle.
+    if (detectModelPath != null) 'detectModelPath': detectModelPath,
+    if (srModelPath != null) 'srModelPath': srModelPath,
+    // Omitted rather than sent as zero: the platform reads its absence as
+    // "build your own", and a zero pointer arriving as a number is a
+    // shape worth never producing.
+    if (scannerHandle != 0) 'scannerHandle': scannerHandle,
+  });
 
   @override
   Stream<String> get scanEvents =>
@@ -127,9 +128,9 @@ class MethodChannelWxScan extends WxScanPlatform {
 
   @override
   Stream<Map<String, dynamic>> get previewSizeEvents =>
-      _previewSizeEvents ??= _sizeEvents
-          .receiveBroadcastStream()
-          .map((event) => (event as Map).cast<String, dynamic>());
+      _previewSizeEvents ??= _sizeEvents.receiveBroadcastStream().map(
+        (event) => (event as Map).cast<String, dynamic>(),
+      );
 
   @override
   Future<void> setResolution(int shortSide) =>
@@ -176,11 +177,10 @@ class MethodChannelWxScan extends WxScanPlatform {
     required int width,
     required int height,
     required int rotation,
-  }) =>
-      _method.invokeMethod<String>('selfTestNative', {
-        'gray': gray,
-        'width': width,
-        'height': height,
-        'rotation': rotation,
-      });
+  }) => _method.invokeMethod<String>('selfTestNative', {
+    'gray': gray,
+    'width': width,
+    'height': height,
+    'rotation': rotation,
+  });
 }

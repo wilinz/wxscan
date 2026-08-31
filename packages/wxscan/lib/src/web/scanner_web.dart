@@ -212,10 +212,9 @@ class WxScanner {
         'instead — detectModel and srModel — fetched or loaded from an asset.',
       );
     }
-    return WxScanner._(await startWxScanWorker(
-      detectModel: detectModel,
-      srModel: srModel,
-    ));
+    return WxScanner._(
+      await startWxScanWorker(detectModel: detectModel, srModel: srModel),
+    );
   }
 
   void _checkAlive() {
@@ -239,7 +238,11 @@ class WxScanner {
   }) {
     _checkAlive();
     return _worker.scanPixels(
-        Uint8List.fromList(pixels), width, height, format.nativeValue);
+      Uint8List.fromList(pixels),
+      width,
+      height,
+      format.nativeValue,
+    );
   }
 
   /// Decodes a camera frame: a Y plane with a row stride, rotated upright.
@@ -268,15 +271,15 @@ class WxScanner {
   /// the web, and says what to do instead rather than failing to build. Fetch
   /// or read the picture yourself and use [scanPixels].
   Future<ScanOutcome> scanPath(String path) => throw UnsupportedError(
-        'wxscan: scanPath is not available in a browser, which has no '
-        'filesystem. Read the picture yourself and use scanPixels.',
-      );
+    'wxscan: scanPath is not available in a browser, which has no '
+    'filesystem. Read the picture yourself and use scanPixels.',
+  );
 
   /// Not available in a browser. See [scanPath].
   ScanOutcome scanPathSync(String path) => throw UnsupportedError(
-        'wxscan: scanPath is not available in a browser, which has no '
-        'filesystem. Read the picture yourself and use scanPixels.',
-      );
+    'wxscan: scanPath is not available in a browser, which has no '
+    'filesystem. Read the picture yourself and use scanPixels.',
+  );
 
   /// Decodes an encoded picture already in memory.
   ///
@@ -298,8 +301,7 @@ class WxScanner {
     _checkAlive();
     final decoded = await decodeImage(data);
     if (decoded == null) {
-      throw const PictureUnreadable(
-          null, PictureReadFailure.unsupportedFormat);
+      throw const PictureUnreadable(null, PictureReadFailure.unsupportedFormat);
     }
     // Alive again after the await: decoding is not instant, and the scanner
     // can be disposed while a large photograph is being read.
@@ -329,10 +331,10 @@ class WxScanner {
   }
 
   static Never _noSync(String name) => throw UnsupportedError(
-        'wxscan: $name is not available in a browser. The scanner runs in '
-        'a worker, so results arrive as a message; use the asynchronous '
-        'method of the same name.',
-      );
+    'wxscan: $name is not available in a browser. The scanner runs in '
+    'a worker, so results arrive as a message; use the asynchronous '
+    'method of the same name.',
+  );
 
   /// Not available in a browser: the scanner runs in a worker.
   ScanOutcome scanGraySync(Uint8List gray, int width, int height) =>
@@ -344,8 +346,7 @@ class WxScanner {
     int width,
     int height, {
     WxPixelFormat format = WxPixelFormat.rgba,
-  }) =>
-      _noSync('scanPixelsSync');
+  }) => _noSync('scanPixelsSync');
 
   /// Not available in a browser: the scanner runs in a worker.
   ScanOutcome scanFrameSync(
@@ -355,8 +356,7 @@ class WxScanner {
     int? rowStride,
     int rotation = 0,
     bool mirror = false,
-  }) =>
-      _noSync('scanFrameSync');
+  }) => _noSync('scanFrameSync');
 
   /// Stops the worker. Using the scanner afterwards throws.
   Future<void> dispose() async {

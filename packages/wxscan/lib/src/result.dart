@@ -187,11 +187,11 @@ class PictureUnreadable implements Exception {
 
   @override
   String toString() => switch (failure) {
-        PictureReadFailure.unreadable =>
-          'PictureUnreadable: could not open or read $_subject',
-        PictureReadFailure.unsupportedFormat =>
-          'PictureUnreadable: $_subject is not an image this build can decode; '
-              'HEIC and anything else needing a system decoder must go '
-              'through the platform and WxScanner.scanPixels',
-      };
+    PictureReadFailure.unreadable =>
+      'PictureUnreadable: could not open or read $_subject',
+    PictureReadFailure.unsupportedFormat =>
+      'PictureUnreadable: $_subject is not an image this build can decode; '
+          'HEIC and anything else needing a system decoder must go '
+          'through the platform and WxScanner.scanPixels',
+  };
 }

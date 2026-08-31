@@ -55,17 +55,20 @@ enum WxPixelFormat {
 /// callers already off the main one.
 class WxScanner implements ffi.Finalizable {
   WxScanner._(this._handle, this._worker, _Snapshot snapshot)
-      : hasDetector = snapshot.hasDetector,
-        hasSuperResolution = snapshot.hasSuperResolution,
-        _scaleFactor = snapshot.scaleFactor,
-        _confidenceThreshold = snapshot.confidenceThreshold,
-        _nmsThreshold = snapshot.nmsThreshold {
+    : hasDetector = snapshot.hasDetector,
+      hasSuperResolution = snapshot.hasSuperResolution,
+      _scaleFactor = snapshot.scaleFactor,
+      _confidenceThreshold = snapshot.confidenceThreshold,
+      _nmsThreshold = snapshot.nmsThreshold {
     // The finalizer carries one machine word to the release function, which is
     // exactly what a handle is. Typed as a pointer because that is the only
     // token a NativeFinalizer takes; nothing ever dereferences it, here or in
     // Rust. Handles start at one, so the token is never null.
-    _finalizer.attach(this, ffi.Pointer<ffi.Void>.fromAddress(_handle),
-        detach: this);
+    _finalizer.attach(
+      this,
+      ffi.Pointer<ffi.Void>.fromAddress(_handle),
+      detach: this,
+    );
     _leakWatch?.attach(this, _handle, detach: this);
   }
 
@@ -204,7 +207,9 @@ class WxScanner implements ffi.Finalizable {
     String? srModelPath,
   }) async {
     if (detectModel != null && detectModelPath != null) {
-      throw ArgumentError('wxscan: pass detectModel or detectModelPath, not both');
+      throw ArgumentError(
+        'wxscan: pass detectModel or detectModelPath, not both',
+      );
     }
     if (srModel != null && srModelPath != null) {
       throw ArgumentError('wxscan: pass srModel or srModelPath, not both');
@@ -220,8 +225,9 @@ class WxScanner implements ffi.Finalizable {
     var handle = 0;
     try {
       if (detectModelPath != null || srModelPath != null) {
-        final (id, status) =
-            await worker.run(_CreatePathRequest(detectModelPath, srModelPath));
+        final (id, status) = await worker.run(
+          _CreatePathRequest(detectModelPath, srModelPath),
+        );
         handle = id;
         if (handle == 0) {
           // Which of the three mistakes it was, since only the caller can fix
@@ -313,8 +319,7 @@ class WxScanner implements ffi.Finalizable {
   /// already reflects, so it is swallowed rather than left to surface as an
   /// unhandled asynchronous error.
   void _configure(_Setting setting, double value) {
-    _track(_worker.run(_ConfigRequest(_handle, setting, value)))
-        .ignore();
+    _track(_worker.run(_ConfigRequest(_handle, setting, value))).ignore();
   }
 
   /// Keeps this scanner reachable until [work] finishes.
@@ -345,13 +350,9 @@ class WxScanner implements ffi.Finalizable {
   }) {
     _checkAlive();
     _validatePixels(pixels, width, height, format);
-    return _track(_worker.run(_PixelsRequest(
-      _handle,
-      pixels,
-      width,
-      height,
-      format,
-    )));
+    return _track(
+      _worker.run(_PixelsRequest(_handle, pixels, width, height, format)),
+    );
   }
 
   /// Decodes a camera frame.
@@ -376,15 +377,11 @@ class WxScanner implements ffi.Finalizable {
     _checkAlive();
     final stride = rowStride ?? width;
     _validateFrame(data, width, height, stride, rotation);
-    return _track(_worker.run(_FrameRequest(
-      _handle,
-      data,
-      width,
-      height,
-      stride,
-      rotation,
-      mirror,
-    )));
+    return _track(
+      _worker.run(
+        _FrameRequest(_handle, data, width, height, stride, rotation, mirror),
+      ),
+    );
   }
 
   /// Decodes a picture on disk, reading and decoding the file natively.
@@ -405,8 +402,9 @@ class WxScanner implements ffi.Finalizable {
   /// it returns an empty [ScanOutcome] instead, which is a different thing.
   Future<ScanOutcome> scanPath(String path) async {
     _checkAlive();
-    final (status, outcome) =
-        await _track(_worker.run(_PathRequest(_handle, path)));
+    final (status, outcome) = await _track(
+      _worker.run(_PathRequest(_handle, path)),
+    );
     return _unwrapPath(path, status, outcome);
   }
 
@@ -437,8 +435,9 @@ class WxScanner implements ffi.Finalizable {
   /// returns an empty [ScanOutcome] instead, which is a different thing.
   Future<ScanOutcome> scanImage(Uint8List data) async {
     _checkAlive();
-    final (status, outcome) =
-        await _track(_worker.run(_BytesRequest(_handle, data)));
+    final (status, outcome) = await _track(
+      _worker.run(_BytesRequest(_handle, data)),
+    );
     return _unwrapPath(null, status, outcome);
   }
 
@@ -677,11 +676,11 @@ class _CreatePathRequest extends _Request<(int, int)> {
 
 /// A `WxScanStatus` from [_CreatePathRequest], as something worth reading.
 String _pathTrouble(int status) => switch (status) {
-      1 => 'a path is not valid text',
-      2 => 'a file could not be read',
-      4 => 'a file was read but is not weights this build can load',
-      _ => 'the scanner could not be created',
-    };
+  1 => 'a path is not valid text',
+  2 => 'a file could not be read',
+  4 => 'a file was read but is not weights this build can load',
+  _ => 'the scanner could not be created',
+};
 
 /// Which setting a [_ConfigRequest] applies.
 enum _Setting { scaleFactor, confidenceThreshold, nmsThreshold }
@@ -764,16 +763,16 @@ class _FrameRequest extends _Request<ScanOutcome> {
 
   @override
   ScanOutcome run() => _withNative(data, (buf) {
-        return wxscan_scan_frame(
-          handle,
-          buf,
-          width,
-          height,
-          rowStride,
-          rotation,
-          mirror ? 1 : 0,
-        );
-      });
+    return wxscan_scan_frame(
+      handle,
+      buf,
+      width,
+      height,
+      rowStride,
+      rotation,
+      mirror ? 1 : 0,
+    );
+  });
 }
 
 class _PixelsRequest extends _Request<ScanOutcome> {
@@ -793,14 +792,8 @@ class _PixelsRequest extends _Request<ScanOutcome> {
 
   @override
   ScanOutcome run() => _withNative(pixels, (buf) {
-        return wxscan_scan_pixels(
-          handle,
-          buf,
-          width,
-          height,
-          format.nativeValue,
-        );
-      });
+    return wxscan_scan_pixels(handle, buf, width, height, format.nativeValue);
+  });
 }
 
 /// Turns the native status into either an outcome or the exception it stands
@@ -819,7 +812,8 @@ ScanOutcome _unwrapPath(String? path, int status, ScanOutcome outcome) =>
       // something this library failed to hand over rather than anything the
       // caller did.
       _ => throw StateError(
-          'wxscan: scanning ${path ?? 'the image data'} failed ($status)'),
+        'wxscan: scanning ${path ?? 'the image data'} failed ($status)',
+      ),
     };
 
 /// Reads a picture from a path natively, carrying the status back rather than
@@ -836,11 +830,7 @@ class _PathRequest extends _Request<(int, ScanOutcome)> {
     final status = calloc<ffi.Int32>();
     ffi.Pointer<WxScanResults> out = ffi.nullptr;
     try {
-      out = wxscan_scan_path(
-        handle,
-        cPath.cast(),
-        status,
-      );
+      out = wxscan_scan_path(handle, cPath.cast(), status);
       if (out == ffi.nullptr) return (status.value, ScanOutcome.empty);
       return (status.value, _readOutcome(out.ref));
     } finally {
@@ -866,12 +856,7 @@ class _BytesRequest extends _Request<(int, ScanOutcome)> {
     final status = calloc<ffi.Int32>();
     ffi.Pointer<WxScanResults> out = ffi.nullptr;
     try {
-      out = wxscan_scan_bytes(
-        handle,
-        buf,
-        data.length,
-        status,
-      );
+      out = wxscan_scan_bytes(handle, buf, data.length, status);
       if (out == ffi.nullptr) return (status.value, ScanOutcome.empty);
       return (status.value, _readOutcome(out.ref));
     } finally {
@@ -1087,5 +1072,6 @@ ScanOutcome _readOutcome(WxScanResults raw) {
   );
 }
 
-List<ScanPoint> _corners(double Function(int) at) =>
-    [for (var i = 0; i < 4; i++) ScanPoint(at(i * 2), at(i * 2 + 1))];
+List<ScanPoint> _corners(double Function(int) at) => [
+  for (var i = 0; i < 4; i++) ScanPoint(at(i * 2), at(i * 2 + 1)),
+];

@@ -54,11 +54,11 @@ const _formats = {'png', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'heic'};
 /// there too would be 570 KB and an HEVC decoder to answer a question the
 /// system has already answered.
 List<String> _defaultFormats(OS os) => [
-      'png',
-      'jpeg',
-      'gif',
-      if (os != OS.iOS && os != OS.macOS) ...['webp', 'bmp', 'tiff', 'heic'],
-    ];
+  'png',
+  'jpeg',
+  'gif',
+  if (os != OS.iOS && os != OS.macOS) ...['webp', 'bmp', 'tiff', 'heic'],
+];
 
 /// The `[profile.release]` keys that may be set, and what each accepts.
 ///
@@ -82,9 +82,9 @@ const _profileKeys = <String, Set<String>?>{
 
 /// Reads and validates what the application asked for.
 RustOptions readOptions(BuildInput input, OS os) => RustOptions(
-      features: _readFormats(input.userDefines['image_formats'], os),
-      cargoEnvironment: _readProfile(input.userDefines['cargo_profile']),
-    );
+  features: _readFormats(input.userDefines['image_formats'], os),
+  cargoEnvironment: _readProfile(input.userDefines['cargo_profile']),
+);
 
 List<String> _readFormats(Object? value, OS os) {
   if (value == null) return _defaultFormats(os);

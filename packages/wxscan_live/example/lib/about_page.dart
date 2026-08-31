@@ -67,16 +67,18 @@ class AboutPage extends StatelessWidget {
                 'give up on. A neural network finds the symbol, a second one '
                 'sharpens it before decoding, and both run on the device — no '
                 'picture and no decoded text ever leaves it.',
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 16),
               Text(
                 'Two packages: wxscan decodes a picture, wxscan_live drives the '
                 'camera. This screen is part of the example for the second, and '
                 'is meant to be read as much as run.',
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 24),
               for (final link in _links) ...[
@@ -106,8 +108,11 @@ class _LinkTile extends StatelessWidget {
         leading: Icon(link.icon, color: theme.colorScheme.primary),
         title: Text(link.title),
         subtitle: Text(link.subtitle),
-        trailing: Icon(Icons.open_in_new,
-            size: 18, color: theme.colorScheme.onSurfaceVariant),
+        trailing: Icon(
+          Icons.open_in_new,
+          size: 18,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
         onTap: () => openLink(context, link.url),
       ),
     );

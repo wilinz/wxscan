@@ -41,8 +41,12 @@ class PickPage extends StatelessWidget {
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTapUp: (d) {
-                final hit =
-                    pickHitTest(d.localPosition, BoxFit.contain, box, outcome);
+                final hit = pickHitTest(
+                  d.localPosition,
+                  BoxFit.contain,
+                  box,
+                  outcome,
+                );
                 if (hit != null) Navigator.of(context).pop(hit);
               },
               child: Stack(
@@ -54,8 +58,7 @@ class PickPage extends StatelessWidget {
                   Image.memory(image, fit: BoxFit.contain),
                   CustomPaint(
                     size: Size.infinite,
-                    painter:
-                        PickPainter(frame: outcome, fit: BoxFit.contain),
+                    painter: PickPainter(frame: outcome, fit: BoxFit.contain),
                   ),
                 ],
               ),

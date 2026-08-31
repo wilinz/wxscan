@@ -51,12 +51,15 @@ Future<(String detect, String sr)> installWeights(
     String.fromCharCodes(await readAsset('assets/models/model-version.txt')),
   );
   final dir = Directory(
-      '${(await getApplicationDocumentsDirectory()).path}/$_dirName');
+    '${(await getApplicationDocumentsDirectory()).path}/$_dirName',
+  );
   // The plugin writes with a plain file stream and does not create parents.
   await dir.create(recursive: true);
 
   Future<bool> isCurrent(File file, int? expected) async =>
-      expected != null && await file.exists() && await file.length() == expected;
+      expected != null &&
+      await file.exists() &&
+      await file.length() == expected;
 
   Future<String> install(String name) async {
     final file = File('${dir.path}/$name');

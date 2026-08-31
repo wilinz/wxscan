@@ -134,7 +134,8 @@ class WxScanWeb extends WxScanPlatform {
       'displayRotation': 0,
       'nativeReady': nativeReady,
       'modelsLoaded':
-          (_worker?.hasDetector ?? false) || (_worker?.hasSuperResolution ?? false),
+          (_worker?.hasDetector ?? false) ||
+          (_worker?.hasSuperResolution ?? false),
     };
   }
 
@@ -144,22 +145,21 @@ class WxScanWeb extends WxScanPlatform {
     _viewRegistered = true;
     // The factory is registered once and hands back whichever element the
     // current camera is playing into, since a view type cannot be replaced.
-    ui_web.platformViewRegistry.registerViewFactory(
-      wxScanPreviewViewType,
-      (int viewId) {
-        final host = _createElement('div');
-        host.setProperty('style'.toJS, 'width:100%;height:100%'.toJS);
-        _previewHost = host;
-        final element = _previewElement;
-        if (element != null) {
-          host.callMethod<JSAny?>('appendChild'.toJS, element);
-          // Attaching is not resuming: an element that was paused while it sat
-          // outside the page stays paused here.
-          _play(element);
-        }
-        return host;
-      },
-    );
+    ui_web.platformViewRegistry.registerViewFactory(wxScanPreviewViewType, (
+      int viewId,
+    ) {
+      final host = _createElement('div');
+      host.setProperty('style'.toJS, 'width:100%;height:100%'.toJS);
+      _previewHost = host;
+      final element = _previewElement;
+      if (element != null) {
+        host.callMethod<JSAny?>('appendChild'.toJS, element);
+        // Attaching is not resuming: an element that was paused while it sat
+        // outside the page stays paused here.
+        _play(element);
+      }
+      return host;
+    });
   }
 
   /// Puts [element] on screen as the preview.
@@ -197,10 +197,10 @@ class WxScanWeb extends WxScanPlatform {
   /// the stream is muted and inline, so nothing here needs a gesture.
   static void _play(JSObject element) {
     try {
-      element.callMethod<JSPromise<JSAny?>>('play'.toJS).toDart.then(
-            (_) {},
-            onError: (Object _) {},
-          );
+      element
+          .callMethod<JSPromise<JSAny?>>('play'.toJS)
+          .toDart
+          .then((_) {}, onError: (Object _) {});
     } on Object catch (_) {}
   }
 
@@ -227,10 +227,12 @@ class WxScanWeb extends WxScanPlatform {
       return;
     }
     _busy = true;
-    unawaited(_scanOnce().whenComplete(() {
-      _busy = false;
-      _driveNext();
-    }));
+    unawaited(
+      _scanOnce().whenComplete(() {
+        _busy = false;
+        _driveNext();
+      }),
+    );
   }
 
   Future<void> _scanOnce() async {
@@ -242,7 +244,11 @@ class WxScanWeb extends WxScanPlatform {
       if (frame == null) return;
       // 2 is WxScanPixelFormat's RGBA, which is what a canvas produces.
       final document = await worker.scanPixelsJson(
-          frame.pixels, frame.width, frame.height, 2);
+        frame.pixels,
+        frame.width,
+        frame.height,
+        2,
+      );
       if (document != null && !_scans.isClosed) _scans.add(document);
     } on Object catch (_) {
       // A frame that fails is dropped; the next one is along in a moment.
