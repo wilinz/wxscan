@@ -107,8 +107,10 @@ class PublishKit {
     // dependencies explains what the block is for and names it — a substring
     // search reads that explanation as the block itself and reports
     // development mode to anyone who has just left it.
-    final hasPatch = RegExp(r'^\[patch\.crates-io\]', multiLine: true)
-        .hasMatch(File(_coreRustManifest).readAsStringSync());
+    final hasPatch = RegExp(
+      r'^\[patch\.crates-io\]',
+      multiLine: true,
+    ).hasMatch(File(_coreRustManifest).readAsStringSync());
     if (hasPatch) {
       print(
         '  note  wxscan/rust carries a [patch.crates-io] block —\n'
@@ -160,7 +162,9 @@ class PublishKit {
         'HEAD',
       ], workingDirectory: root);
       if (head.exitCode != 0) {
-        print('  note  ${repo.dirName} has no commits yet — pass --allow-dirty');
+        print(
+          '  note  ${repo.dirName} has no commits yet — pass --allow-dirty',
+        );
         continue;
       }
 
@@ -228,9 +232,7 @@ class PublishKit {
       }
     }
 
-    for (final target in releasePlan.where(
-      (t) => t.registry == Registry.pub,
-    )) {
+    for (final target in releasePlan.where((t) => t.registry == Registry.pub)) {
       await _manifests.setPubspecVersion(dirOf(target), v[Repo.dart]!);
     }
     // wxscan_live's constraint on wxscan has to move with it, or the newly
@@ -320,9 +322,12 @@ class PublishKit {
       );
     }
 
-    final targets = only == null
-        ? releasePlan
-        : releasePlan.where((t) => only.contains(t.id) || only.contains(t.name));
+    final targets =
+        only == null
+            ? releasePlan
+            : releasePlan.where(
+              (t) => only.contains(t.id) || only.contains(t.name),
+            );
 
     if (targets.isEmpty) {
       throw StateError('No targets matched --only.');
@@ -344,7 +349,14 @@ class PublishKit {
         continue;
       }
 
-      print('\n>>> Publishing ${target.id} $version to ${target.registry.host}');
+      // The last gate before an upload that cannot be taken back. `check`
+      // reports development mode as a note, because it is the normal committed
+      // state; here it is fatal, because here it is about to ship.
+      await _assertReleaseMode(target);
+
+      print(
+        '\n>>> Publishing ${target.id} $version to ${target.registry.host}',
+      );
       await _run(target);
 
       if (dryRun) continue;
@@ -354,6 +366,46 @@ class PublishKit {
     }
 
     print('\nDone.');
+  }
+
+  /// Refuses to publish the Dart package while its Rust manifest still points
+  /// at the sibling checkouts.
+  ///
+  /// Development mode builds perfectly here and nowhere else: whoever installs
+  /// from pub.dev has no `../../../../wxscan-rs`, so the build hook cannot run
+  /// at all. It is invisible from inside the workspace, every local test
+  /// passes, and the first report comes from a stranger whose build broke.
+  /// wxscan 0.1.4 went out this way and had to be replaced.
+  ///
+  /// Only `pub:wxscan` carries that manifest, so only it is checked.
+  Future<void> _assertReleaseMode(Target target) async {
+    if (target.registry != Registry.pub || target.name != 'wxscan') return;
+
+    final wrong = <String>[];
+    for (final dep in ['wxscan-ffi', 'wxscan']) {
+      final line = await _manifests.readCargoDependency(_coreRustManifest, dep);
+      if (line == null) {
+        wrong.add('$dep is missing from the manifest');
+      } else if (line.contains('path')) {
+        wrong.add('$dep is on a path dependency: $line');
+      }
+    }
+    // Anchored, so that the header comment naming the block is not read as the
+    // block itself — see the same regexp in `check`.
+    if (RegExp(
+      r'^\[patch\.crates-io\]',
+      multiLine: true,
+    ).hasMatch(File(_coreRustManifest).readAsStringSync())) {
+      wrong.add('the [patch.crates-io] block is still there');
+    }
+    if (wrong.isEmpty) return;
+
+    throw StateError(
+      'Refusing to publish ${target.id}: packages/wxscan/rust/Cargo.toml is in '
+      'development mode and would not build for anyone installing it.\n'
+      '  ${wrong.join('\n  ')}\n'
+      'Run `publish_kit release-deps` first, and `restore-dev` afterwards.',
+    );
   }
 
   Future<void> _run(Target target) async {

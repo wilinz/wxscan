@@ -61,6 +61,16 @@ only the published archive carries crates.io versions. On a version dependency,
 local edits to the Rust sources become invisible to the Flutter build, and the
 symptom is "my changes stopped taking effect" with no error anywhere.
 
+**Two guards enforce this, so it does not rest on remembering.**
+`publish_kit publish` refuses to upload `pub:wxscan` while that manifest is in
+development mode — `check` reports it as a note, because it is the normal
+committed state, but at the moment of upload it is fatal. And
+`tool/guard_publish.sh`, wired up as a Claude Code PreToolUse hook in
+`.claude/settings.json`, refuses a direct `dart pub publish`, `flutter pub
+publish` or `cargo publish` and points at the kit instead. The kit spawns the
+real publish command itself, which never passes through that hook, so a proper
+release is unaffected. `--dry-run` is always allowed.
+
 **Verify outside the workspace before uploading.** A local build proves nothing
 about a published package: what differs is the manifest form, and it is
 invisible from in here. Copy the package to a short path with no siblings and
