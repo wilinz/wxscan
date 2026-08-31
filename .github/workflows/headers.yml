@@ -31,7 +31,13 @@ jobs:
       - name: The plugin's copies match the generated header
         run: |
           for platform in ios macos; do
-            copy="packages/wxscan_live/$platform/Classes/wxscan.h"
+            copy="packages/wxscan_live/$platform/wxscan_live/Sources/wxscan_c/include/wxscan.h"
+            if [ ! -f "$copy" ]; then
+              echo "::error file=$copy::$copy is missing."
+              echo "The plugin moved and this check did not follow it, or the copy"
+              echo "was deleted. Both are a problem: find where the header lives now."
+              exit 1
+            fi
             if ! diff -u packages/wxscan/src/wxscan.h "$copy"; then
               echo
               echo "::error file=$copy::$copy is behind packages/wxscan/src/wxscan.h."
