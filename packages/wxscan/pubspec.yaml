@@ -1,6 +1,6 @@
 name: wxscan
 description: QR decoding for Dart and Flutter - a Rust port of the wechat_qrcode algorithm (CNN detection, super resolution). Reads images and raw pixel buffers.
-version: 0.1.4
+version: 0.1.5
 homepage: https://github.com/wilinz/wxscan
 repository: https://github.com/wilinz/wxscan
 issue_tracker: https://github.com/wilinz/wxscan/issues

@@ -30,8 +30,8 @@ crate-type = ["cdylib", "staticlib"]
 # which Dart resolves by name and would fail to find at the first call rather
 # than at the format question it is really asking.
 [dependencies]
-wxscan-ffi = { path = "../../../../wxscan-rs/crates/wxscan-ffi", default-features = false, features = ["tflite", "image-io", "model-fs"] }
-wxscan = { path = "../../../../wxscan-rs/crates/wxscan" }
+wxscan-ffi = { version = "0.1.1", default-features = false, features = ["tflite", "image-io", "model-fs"] }
+wxscan = "0.1.1"
 # Used by the Android binding to convert GB2312 payloads for display.
 encoding_rs = "0.8"
 
@@ -78,14 +78,3 @@ heif-oxide = "0.1"
 [profile.release]
 opt-level = 3
 lto = true
-
-# Development only, removed by `publish_kit release-deps`.
-#
-# This lives in the manifest rather than in .cargo/config.toml because
-# the build hook invokes cargo with --manifest-path from the Flutter
-# project's directory, and cargo discovers config files from the
-# process working directory, not from the manifest. A config file next
-# to this one would simply never be read.
-[patch.crates-io]
-cvlite = { path = "../../../../cvlite" }
-wxing = { path = "../../../../wxing" }

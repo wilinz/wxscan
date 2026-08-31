@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5
+
+- No change of its own. Released alongside `wxscan` 0.1.5, which replaces a
+  0.1.4 that could not build outside this repository. 0.1.4 is retracted.
+
 ## 0.1.4
 
 - **Swift Package Manager support.** `ios/wxscan_live/Package.swift` and its

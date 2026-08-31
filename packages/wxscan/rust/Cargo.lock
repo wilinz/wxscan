@@ -186,6 +186,8 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 [[package]]
 name = "cvlite"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d711cadfd02bb523284e263292d8668289853e407164441da868376c1a1b7419"
 
 [[package]]
 name = "encoding_rs"
@@ -858,6 +860,8 @@ dependencies = [
 [[package]]
 name = "wxing"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13dc1a6a3cd0c234b5c29a6c264250d651db34f75c151345f132dd73aac82f87"
 dependencies = [
  "cvlite",
 ]
@@ -865,6 +869,8 @@ dependencies = [
 [[package]]
 name = "wxscan"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb0f47e2534062d4f6b9d0f61fdf4cc9a9a1486cb7c2d3759a03b86a4e27e31d"
 dependencies = [
  "cvlite",
  "wxing",
@@ -874,6 +880,8 @@ dependencies = [
 [[package]]
 name = "wxscan-ffi"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed6138245eba17b928a3304d32286830c3cd6fb07cee49a034ddda498182b63e"
 dependencies = [
  "cbindgen",
  "cvlite",
@@ -885,6 +893,8 @@ dependencies = [
 [[package]]
 name = "wxscan-tflite"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87f905f26d44cddd956d26e3a8525422e167678d2ac04a3b63cb9d856ae47270"
 
 [[package]]
 name = "wxscan_core"

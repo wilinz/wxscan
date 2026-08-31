@@ -1,6 +1,6 @@
 name: wxscan_live
 description: Live QR scanning. Camera frames go straight into a Rust port of the wechat_qrcode algorithm; the preview is a Flutter texture.
-version: 0.1.4
+version: 0.1.5
 homepage: https://github.com/wilinz/wxscan
 repository: https://github.com/wilinz/wxscan
 issue_tracker: https://github.com/wilinz/wxscan/issues
@@ -35,7 +35,7 @@ dependencies:
   # with the image-decoding path. Hosted rather than a path, because pub refuses
   # to publish a package that depends on one; dependency_overrides below points
   # it back at this checkout for development.
-  wxscan: ^0.1.4
+  wxscan: ^0.1.5
 
 dev_dependencies:
   flutter_test:

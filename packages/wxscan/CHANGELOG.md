@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.5
+
+- 0.1.4 was published from a development checkout, so `rust/Cargo.toml` in it
+  carried path dependencies on sibling checkouts and a `[patch.crates-io]`
+  block. Nobody installing from pub.dev has those directories, so its build
+  hook could not build. This release is the same code with the crates.io
+  versions it should have shipped with. 0.1.4 is retracted; do not use it.
+
 ## 0.1.4
 
 - **iOS simulator builds work.** Three things were wrong at once, and each hid
