@@ -16,8 +16,8 @@ class RegistryClient {
   /// crates.io rejects requests without one, so it is not optional.
   final String userAgent;
 
-  final HttpClient _client = HttpClient()
-    ..connectionTimeout = const Duration(seconds: 20);
+  final HttpClient _client =
+      HttpClient()..connectionTimeout = const Duration(seconds: 20);
 
   Uri _versionUrl(Target target, String version) => switch (target.registry) {
     Registry.cargo => Uri.https(

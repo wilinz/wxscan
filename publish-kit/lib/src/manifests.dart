@@ -204,9 +204,10 @@ class Manifests {
     final kept = _dependencyExtras(lines[matches.single], dependency);
     // A dependency that says nothing but its version is written the short way,
     // which is what a manifest holds when nobody has had to say more.
-    final spec = kept.isEmpty && source.startsWith('version')
-        ? source.substring(source.indexOf('=') + 1).trim()
-        : '{ ${[source, ...kept].join(', ')} }';
+    final spec =
+        kept.isEmpty && source.startsWith('version')
+            ? source.substring(source.indexOf('=') + 1).trim()
+            : '{ ${[source, ...kept].join(', ')} }';
 
     lines[matches.single] = '$dependency = $spec';
     await _write(
@@ -248,9 +249,11 @@ class Manifests {
     return [
       for (final entry in entries)
         if (entry.trim().isNotEmpty &&
-            !const ['path', 'version', 'git'].contains(
-              entry.split('=').first.trim(),
-            ))
+            !const [
+              'path',
+              'version',
+              'git',
+            ].contains(entry.split('=').first.trim()))
           entry.trim(),
     ];
   }
@@ -272,6 +275,8 @@ class Manifests {
 
   static String _short(String path) {
     final parts = path.split('/');
-    return parts.length <= 3 ? path : '.../${parts.sublist(parts.length - 3).join('/')}';
+    return parts.length <= 3
+        ? path
+        : '.../${parts.sublist(parts.length - 3).join('/')}';
   }
 }

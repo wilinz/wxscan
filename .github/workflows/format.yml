@@ -1,0 +1,40 @@
+# Everything is `dart format` clean, against a fixed SDK.
+#
+# pub.dev scores formatting, so this is not only taste. But the reason it is
+# checked rather than remembered is that unformatted code is invisible until
+# someone runs the formatter for an unrelated reason and the next commit
+# carries a hundred lines of reflow mixed in with the change it was meant to
+# be. publish-kit had exactly that pending: three files still in the pre-3.7
+# style, waiting to ambush whoever ran `dart format .` next.
+#
+# The SDK is pinned here and nowhere else. `ci` deliberately tracks `stable`,
+# because what matters there is that the package still builds on what people
+# are installing today. Formatting is the opposite: the style is a property of
+# the SDK, it changed once already in 3.7, and a job that goes red because a
+# new Dart shipped is a job that gets ignored. Raising this number is a
+# deliberate act with a reformatting commit attached.
+name: format
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with: { sdk: 3.13.1 }
+
+      # No `pub get` anywhere: the formatter reads each pubspec for its
+      # language version and needs nothing resolved, so this stays a
+      # ten-second job rather than a build of four repositories.
+      - name: Everything is formatted
+        run: dart format --output=none --set-exit-if-changed .

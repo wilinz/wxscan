@@ -7,32 +7,36 @@ import 'package:publish_kit/publish_kit.dart';
 const _commands = {
   'check': 'Report anything that would block a release. Changes nothing.',
   'update-version': 'Propagate each version.txt into its manifests.',
-  'release-deps': 'Point wxscan/rust at crates.io instead of the sibling checkout.',
+  'release-deps':
+      'Point wxscan/rust at crates.io instead of the sibling checkout.',
   'restore-dev': 'Point wxscan/rust back at the sibling checkout.',
   'publish': 'Publish everything not already up, in dependency order.',
   'tag': 'Tag each repository at its current version. Pushes nothing.',
 };
 
 Future<void> main(List<String> arguments) async {
-  final parser = ArgParser()
-    ..addFlag(
-      'dry-run',
-      abbr: 'd',
-      help: 'Print and pack, but upload nothing and edit no file.',
-    )
-    ..addFlag(
-      'allow-dirty',
-      help: 'Pass --allow-dirty to cargo. Required until wxscan-rs is committed.',
-    )
-    ..addMultiOption(
-      'only',
-      help: 'Limit publishing to these targets, e.g. --only crate:cvlite.',
-    )
-    ..addOption(
-      'workspace-root',
-      help: 'Directory holding all four checkouts. Defaults to searching upward.',
-    )
-    ..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.');
+  final parser =
+      ArgParser()
+        ..addFlag(
+          'dry-run',
+          abbr: 'd',
+          help: 'Print and pack, but upload nothing and edit no file.',
+        )
+        ..addFlag(
+          'allow-dirty',
+          help:
+              'Pass --allow-dirty to cargo. Required until wxscan-rs is committed.',
+        )
+        ..addMultiOption(
+          'only',
+          help: 'Limit publishing to these targets, e.g. --only crate:cvlite.',
+        )
+        ..addOption(
+          'workspace-root',
+          help:
+              'Directory holding all four checkouts. Defaults to searching upward.',
+        )
+        ..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.');
 
   late final ArgResults args;
   try {
