@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'src/manifests.dart';
 import 'src/plan.dart';
 import 'src/registry_client.dart';
+import 'src/tags.dart';
 
 export 'src/plan.dart';
 
@@ -32,6 +33,7 @@ class PublishKit {
 
   final Manifests _manifests;
   final RegistryClient _registry = RegistryClient();
+  late final Tags _tags = Tags(dryRun: dryRun);
 
   String rootOf(Repo repo) => p.join(workspaceRoot, repo.dirName);
 
@@ -180,6 +182,23 @@ class PublishKit {
           '  note  ${repo.dirName} has ${dirty.split('\n').length} '
           'uncommitted paths',
         );
+      }
+
+      // A released version with no tag is the state this section exists to
+      // surface: nothing downstream breaks, so it is not a blocker, and
+      // nothing surfaces it either, which is how two releases went out
+      // untagged.
+      final version = versions[repo];
+      if (version != null) {
+        final name = Tags.tagName(version);
+        if (await _tags.exists(root, version)) {
+          pass('${repo.dirName} $name exists');
+        } else {
+          print(
+            '  note  ${repo.dirName} $version is not tagged — '
+            'run `publish_kit tag`',
+          );
+        }
       }
     }
 
@@ -333,6 +352,8 @@ class PublishKit {
       throw StateError('No targets matched --only.');
     }
 
+    final released = <Repo>{};
+
     for (final target in targets) {
       final version = await versionOf(target);
 
@@ -346,6 +367,10 @@ class PublishKit {
       }
       if (published) {
         print('--- ${target.id} $version already published, skipping');
+        // Confirmed up, which is all tagging needs. Re-running `publish` after
+        // a release that was never tagged therefore fixes the tag, instead of
+        // reporting everything as skipped and doing nothing.
+        released.add(target.repo);
         continue;
       }
 
@@ -363,9 +388,104 @@ class PublishKit {
 
       // Nothing downstream can resolve this until the registry serves it.
       await _registry.waitUntilPublished(target, version, log: print);
+      released.add(target.repo);
     }
 
+    // Last, and unconditional: the tag is the only record of which commit a
+    // published version came from, and asking someone to remember one more
+    // step at the end of a seven-target release is how 0.1.4 and 0.1.5 ended
+    // up untagged.
+    await tagRelease(repos: released);
+
     print('\nDone.');
+  }
+
+  // ---- tags ---------------------------------------------------------------
+
+  /// Creates an annotated `v<version>` tag on each repository that does not
+  /// have one for the version it is currently at.
+  ///
+  /// Restricted to [repos] when given, which is how `publish` tags only what
+  /// it actually released; with no argument every repository is considered,
+  /// which is what the standalone command does.
+  ///
+  /// Nothing is pushed. See [Tags] for why.
+  ///
+  /// Returns false when a repository could not be tagged. One repository's
+  /// problem does not stop the others: this runs at the end of `publish`,
+  /// where everything is already uploaded, and throwing there would report a
+  /// finished release as a failed one while leaving the repositories that were
+  /// fine untagged as well.
+  Future<bool> tagRelease({Set<Repo>? repos}) async {
+    print('\nTags');
+
+    final created = <(String, String)>[];
+    final skipped = <String>[];
+
+    for (final repo in Repo.values) {
+      if (repos != null && !repos.contains(repo)) continue;
+
+      final root = rootOf(repo);
+      if (!Directory(root).existsSync()) continue;
+
+      try {
+        final version = await _manifests.readVersion(root);
+        final body =
+            repo.changelog == null
+                ? null
+                : Tags.changelogSection(p.join(root, repo.changelog!), version);
+
+        final result = await _tags.create(
+          root,
+          version: version,
+          label: repo.dirName,
+          body: body,
+          allowDirty: allowDirty,
+        );
+        if (result.wasCreated) {
+          created.add((repo.dirName, result.name));
+          print(
+            '  ${dryRun ? "would  " : "tagged "} ${repo.dirName.padRight(10)} '
+            '${result.name}  -> ${result.commit}',
+          );
+        } else {
+          print(
+            '  ---     ${repo.dirName.padRight(10)} ${result.name} already '
+            'exists -> ${result.commit}',
+          );
+        }
+      } on StateError catch (e) {
+        skipped.add(repo.dirName);
+        // Continuation lines line up under the first, so a multi-line reason
+        // reads as one entry rather than as more repositories.
+        final reason = e.message.split('\n').join('\n          ');
+        print('  SKIP    ${repo.dirName.padRight(10)} $reason');
+      }
+    }
+
+    if (created.isEmpty && skipped.isEmpty) {
+      print('  Nothing to tag.');
+      return true;
+    }
+
+    if (created.isNotEmpty && !dryRun) {
+      // Deliberately not run for you: a pushed tag is public and is the one
+      // thing here that cannot be quietly undone. One line per repository,
+      // because they are four repositories.
+      print('\n  Push them, from $workspaceRoot:');
+      for (final (dirName, tagName) in created) {
+        print('    ${Tags.pushCommand(dirName, tagName)}');
+      }
+    }
+
+    if (skipped.isNotEmpty) {
+      print(
+        '\n  Not tagged: ${skipped.join(', ')}. '
+        'Fix the above and re-run `publish_kit tag`.',
+      );
+      return false;
+    }
+    return true;
   }
 
   /// Refuses to publish the Dart package while its Rust manifest still points

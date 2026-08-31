@@ -10,6 +10,7 @@ const _commands = {
   'release-deps': 'Point wxscan/rust at crates.io instead of the sibling checkout.',
   'restore-dev': 'Point wxscan/rust back at the sibling checkout.',
   'publish': 'Publish everything not already up, in dependency order.',
+  'tag': 'Tag each repository at its current version. Pushes nothing.',
 };
 
 Future<void> main(List<String> arguments) async {
@@ -85,6 +86,8 @@ Future<void> main(List<String> arguments) async {
       case 'publish':
         final only = (args['only'] as List<String>).toSet();
         await kit.publish(only: only.isEmpty ? null : only);
+      case 'tag':
+        if (!await kit.tagRelease()) exit(1);
     }
   } on StateError catch (e) {
     stderr.writeln('\nError: ${e.message}');
@@ -130,6 +133,8 @@ void _usage(ArgParser parser) {
   }
   stdout.writeln(
     '\nThere is deliberately no "all". The chain crosses two registries and '
-    'cannot be\nundone once a version is up; each step is run on purpose.',
+    'cannot be\nundone once a version is up; each step is run on purpose.\n'
+    '\n`publish` tags what it released. `tag` on its own is for a release that\n'
+    'went out untagged. Neither pushes anything.',
   );
 }

@@ -88,7 +88,16 @@ do not fit" — that is the path, not the package. Keep it short.
 
 Versions live in one `version.txt` per repository, four in all, deliberately
 not shared: being able to move the repositories independently was the point of
-splitting them. Git is by hand — the kit creates no branches, tags or commits.
+splitting them.
+
+`publish` tags each repository it released, `v<version>` on HEAD, with the
+changelog entry as the tag body where there is one. It creates no branches and
+no commits, and it pushes nothing — it prints the `git push` line per
+repository, because these are four repositories and one push does not reach
+them all. `publish_kit tag` does the same on its own, which is what a release
+that already went out untagged needs; both are re-runnable, and `check` reports
+a version with no tag. 0.1.4 and 0.1.5 shipped untagged because this step
+existed only in this file.
 
 ## Working across the repositories
 

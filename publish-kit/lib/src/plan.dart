@@ -28,14 +28,23 @@ enum Repo {
   cvlite('cvlite', 'General-purpose OpenCV imgproc functions'),
   wxing('wxing', 'General-purpose QR decoding, the ZXing fork'),
   rust('wxscan-rs', 'The WeChat algorithm: wxscan, -tflite, -ffi'),
-  dart('wxscan', 'The Dart side: wxscan, wxscan_live');
+  dart(
+    'wxscan',
+    'The Dart side: wxscan, wxscan_live',
+    changelog: 'packages/wxscan/CHANGELOG.md',
+  );
 
-  const Repo(this.dirName, this.summary);
+  const Repo(this.dirName, this.summary, {this.changelog});
 
   /// Directory name under the shared parent that holds all checkouts.
   final String dirName;
 
   final String summary;
+
+  /// Changelog to draw a release tag's body from, relative to the repository
+  /// root, or null where there is none. Only the Dart side keeps one: it is
+  /// the only piece with users who read release notes rather than diffs.
+  final String? changelog;
 }
 
 /// One publishable unit.
