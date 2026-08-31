@@ -150,9 +150,11 @@ either one means building both, on iOS device, iOS simulator and macOS.
 ## Conventions
 
 - Run `dart format .` before publishing; pub.dev scores formatting, and
-  the `format` workflow fails on anything unformatted. It pins the SDK to
-  3.13.1, because the formatter's style is a property of the SDK version
-  and changed once already in 3.7 — use that Dart, or expect a diff.
+  `tool/check_format.py` fails CI on anything unformatted. Resolve
+  dependencies first: with no `.dart_tool`, `dart format` assumes the latest
+  language version instead of the package's, and the style differs between
+  3.7, 3.8 and now — which is also why the check groups files by package
+  rather than running one command over the tree.
 - Package descriptions must be 60-180 characters, or pub.dev takes 10 points.
 - `tool/check_links.py` checks every link in every README.
 - READMEs come in pairs, `README.md` and `README.zh-CN.md`. Change both.

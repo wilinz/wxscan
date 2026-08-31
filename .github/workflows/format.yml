@@ -1,18 +1,28 @@
-# Everything is `dart format` clean, against a fixed SDK.
+# Everything is `dart format` clean.
 #
 # pub.dev scores formatting, so this is not only taste. But the reason it is
 # checked rather than remembered is that unformatted code is invisible until
-# someone runs the formatter for an unrelated reason and the next commit
-# carries a hundred lines of reflow mixed in with the change it was meant to
-# be. publish-kit had exactly that pending: three files still in the pre-3.7
-# style, waiting to ambush whoever ran `dart format .` next.
+# someone runs the formatter for an unrelated reason, and the next commit
+# carries a hundred lines of reflow mixed into whatever it was meant to be.
+# publish-kit had exactly that pending: three files still in the pre-3.7 style,
+# the only ones in the repository that were.
 #
-# The SDK is pinned here and nowhere else. `ci` deliberately tracks `stable`,
-# because what matters there is that the package still builds on what people
-# are installing today. Formatting is the opposite: the style is a property of
-# the SDK, it changed once already in 3.7, and a job that goes red because a
-# new Dart shipped is a job that gets ignored. Raising this number is a
-# deliberate act with a reformatting commit attached.
+# Not a plain `dart format --set-exit-if-changed .`, which does not mean the
+# same thing here as on a developer's machine. The formatter's style depends on
+# the language version of the package a file belongs to — it changed in 3.7 and
+# again in 3.8 — and that version comes from `.dart_tool/package_config.json`,
+# which exists only after `pub get`. With none, the formatter assumes the
+# latest version it knows, so a fresh checkout and a working checkout disagree
+# about the same file. This repository holds packages at 3.7, 3.10 and 3.11,
+# so no single --language-version covers it either. tool/check_format.py groups
+# files by what their own pubspec declares, which is the same answer a
+# developer gets, without resolving anything.
+#
+# The SDK is pinned. `ci` deliberately tracks `stable`, because what matters
+# there is that the package still builds on what people are installing today.
+# Formatting is the opposite: a job that goes red because a new Dart shipped is
+# a job that stops being read. Raising this number is a deliberate act with a
+# reformatting commit attached.
 name: format
 
 on:
@@ -33,8 +43,5 @@ jobs:
       - uses: dart-lang/setup-dart@v1
         with: { sdk: 3.13.1 }
 
-      # No `pub get` anywhere: the formatter reads each pubspec for its
-      # language version and needs nothing resolved, so this stays a
-      # ten-second job rather than a build of four repositories.
       - name: Everything is formatted
-        run: dart format --output=none --set-exit-if-changed .
+        run: python3 tool/check_format.py
