@@ -127,7 +127,10 @@ cd packages/wxscan_live  && flutter analyze
 cd packages/wxscan_live/example && flutter build macos --debug
 ```
 
-The hook needs rustup on `PATH`; the compiler and targets are pinned in
+The hook uses rustup from `PATH`, and fetches one into the build directory when
+there is none — `packages/wxscan/lib/src/hook/rustup.dart`, which the `no rustup`
+workflow is the only thing that exercises, since every machine here has rustup
+already. The compiler and targets are pinned in
 `packages/wxscan/rust/rust-toolchain.toml` and installed on first build. A
 target missing from that file is a failure at the far end of a long build, so
 add one when adding a platform — `flutter build ios --simulator` wants

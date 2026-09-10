@@ -45,12 +45,19 @@ dependencies:
 |---|---|
 | Dart | 3.10 or newer |
 | Flutter | 3.38.1 or newer — on Android, 3.44, [for a rotation bug](packages/wxscan_live/README.md#platforms) |
-| Rust | rustup on `PATH`; the compiler itself is pinned and installed on the first build |
+| Rust | not required — without rustup the build fetches one. Better to [install it](https://rustup.rs) |
 
 Nothing else. The build hook compiles the Rust and fetches the TFLite library,
 reading `rust-toolchain.toml` for the version (1.95.0) and the targets, so
 rustup installs both the first time it runs. No Xcode project, no Gradle, no
 CMake, and no Android NDK beyond what Flutter already installs.
+
+Rust is a dependency of this package rather than of yours, so a machine without
+it still builds: where there is no rustup, the hook fetches one into the build
+directory and uses it from there, touching nothing else. Installing rustup
+yourself is still the better arrangement — one toolchain for every project
+instead of a copy per build directory, kept between the clean builds that throw
+that directory away.
 
 Then follow the quick start in [wxscan](packages/wxscan/README.md#quick-start)
 or [wxscan_live](packages/wxscan_live/README.md#quick-start) — install, weights,

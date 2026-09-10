@@ -42,11 +42,16 @@ dependencies:
 |---|---|
 | Dart | 3.10 或更新 |
 | Flutter | 3.38.1 或更新——Android 上用 3.44，[有个转屏 bug](packages/wxscan_live/README.zh-CN.md#平台) |
-| Rust | `PATH` 上有 rustup 即可；编译器版本是钉死的，第一次构建时自动装 |
+| Rust | 不装也行——没有 rustup 时构建会自己下一个。但建议[自己装](https://rustup.rs) |
 
 就这些。构建钩子会编 Rust、下 TFLite 库，版本（1.95.0）和目标平台都从
 `rust-toolchain.toml` 读，rustup 第一次跑的时候把两样一起装上。不需要 Xcode 工程、
 不需要 Gradle、不需要 CMake，Android NDK 也只用 Flutter 本来就装的那份。
+
+Rust 是这个包的依赖，不是你的依赖，所以机器上没有 Rust 也照样能构建：找不到 rustup
+时，构建钩子会自己下一个放进构建目录，用完就在那儿，别处一点不碰。不过还是建议自己装
+rustup——一份工具链管所有项目，而不是每个构建目录一份，而且不会随着一次 clean 构建
+删掉重来。
 
 接下来照 [wxscan](packages/wxscan/README.zh-CN.md#快速开始) 或
 [wxscan_live](packages/wxscan_live/README.zh-CN.md#快速开始) 的快速开始走一遍：安装、

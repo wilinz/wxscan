@@ -48,12 +48,19 @@ Either form works from Flutter and from plain Dart alike.
 |---|---|
 | Dart | 3.10 or newer |
 | Flutter | 3.38.1 or newer, if you use it from Flutter — this package also runs under plain `dart run` and `dart test` |
-| Rust | rustup on `PATH`; the compiler itself is pinned and installed on the first build |
+| Rust | not required — without rustup the build fetches one. Better to [install it](https://rustup.rs) |
 
 The build hook compiles the Rust and fetches the TFLite library, reading
 `rust-toolchain.toml` for the version (1.95.0) and the targets, so rustup
 installs both the first time it runs. Nothing else: no podspec, no Gradle, no
 CMake.
+
+Rust is a dependency of this package rather than of yours, so a machine without
+it still builds: where there is no rustup, the hook fetches one into the build
+directory and uses it from there, touching nothing else. Installing rustup
+yourself is still the better arrangement — one toolchain for every project
+instead of a copy per build directory, kept between the clean builds that throw
+that directory away.
 
 The CNN weights are not bundled with the package. Download `detect.tflite` and
 `sr.tflite` from
