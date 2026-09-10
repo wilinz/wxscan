@@ -65,10 +65,18 @@ enum WxScanNative {
             return UnsafeMutableRawPointer(bitPattern: -2)  // RTLD_DEFAULT
         }
         // Flutter bundles a code asset as a framework in the application's
-        // private frameworks directory. The versioned path is the macOS
-        // layout, the flat one is iOS's; the rpath forms are the fallback for
-        // a host that lays the bundle out differently.
+        // private frameworks directory, named after the library the build hook
+        // produced - the Rust crate, `wxscan_core` - not after the package.
+        // The versioned path is the macOS layout, the flat one is iOS's; the
+        // rpath forms are the fallback for a host that lays the bundle out
+        // differently. The `wxscan` names are kept for builds that renamed it.
+        //
+        // Missing here is not a corner case: the camera path reaches this
+        // before any Dart call has loaded the library, so `RTLD_DEFAULT`
+        // above finds nothing and these paths are the only way in.
         let relative = [
+            "wxscan_core.framework/Versions/A/wxscan_core",
+            "wxscan_core.framework/wxscan_core",
             "wxscan.framework/Versions/A/wxscan",
             "wxscan.framework/wxscan",
         ]
