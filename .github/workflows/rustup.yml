@@ -82,19 +82,43 @@ jobs:
       - uses: actions/checkout@v4
         with: { repository: wilinz/wxing, path: wxing }
 
-      # The point of the whole workflow. `rustup self uninstall` takes the
-      # toolchains, cargo and rustup itself with it, which leaves the runner
-      # in the state a machine that only ever installed Flutter is in.
+      # The point of the whole workflow: leave the runner in the state a
+      # machine that only ever installed Flutter is in.
       #
-      # Both directories are removed afterwards regardless: the hook looks for
-      # `rustup` on the PATH and then at ~/.cargo/bin/rustup, and a leftover
-      # of either would quietly turn this into an ordinary build that proves
-      # nothing.
+      # `rustup self uninstall` is asked first and not relied on. It does the
+      # tidy thing where rustup came from rustup-init, which is Linux and
+      # Windows here, and refuses outright on macOS, where the runner image
+      # installs rustup from Homebrew and rustup says to uninstall it the way
+      # it was installed. So whatever is left on the PATH afterwards is
+      # deleted by hand, symlink and all.
+      #
+      # `hash -r` between the two is not a detail: bash remembers where it
+      # found rustup a line earlier, and without it `command -v` answers from
+      # that memory and reports a file that is no longer there.
+      #
+      # Then both Rust homes go, because the hook looks for `rustup` on the
+      # PATH and then at ~/.cargo/bin/rustup, and a leftover of either would
+      # quietly turn this into an ordinary build that proves nothing.
       - name: Take Rust off the runner
         shell: bash
         run: |
           rustup self uninstall -y || true
           rm -rf "$HOME/.cargo" "$HOME/.rustup"
+          hash -r
+
+          for tool in rustup cargo rustc; do
+            attempts=0
+            while path=$(command -v "$tool"); do
+              rm -f "$path" 2>/dev/null || sudo rm -f "$path"
+              hash -r
+              attempts=$((attempts + 1))
+              if [ "$attempts" -gt 10 ]; then
+                echo "$tool keeps coming back at $path"
+                exit 1
+              fi
+            done
+          done
+
           if command -v rustup; then
             echo "rustup is still on the PATH; this run would prove nothing"
             exit 1
