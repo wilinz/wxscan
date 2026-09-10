@@ -13,9 +13,17 @@ import 'package:hooks/hooks.dart';
 import 'package:native_toolchain_rust/native_toolchain_rust.dart';
 
 import 'package:wxscan/src/hook/options.dart';
+import 'package:wxscan/src/hook/rustup.dart';
 import 'package:wxscan/src/hook/tflite.dart';
 
 void main(List<String> args) async {
+  // Rust is a dependency of this package, not of the applications that use it.
+  // Where the machine has no rustup, one is fetched into the build directory
+  // and the hook runs itself again with that one on its PATH; this returns
+  // false in the copy that started it, whose child has already written the
+  // output.
+  if (!await ensureRustup(args)) return;
+
   await build(args, (input, output) async {
     // The hook is also run in modes that want no native code at all, and
     // reading the code configuration in one of those throws.
