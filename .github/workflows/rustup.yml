@@ -1,0 +1,178 @@
+# Building on a machine that has never seen Rust.
+#
+# This package is a pub dependency. Whoever adds it to a Flutter application
+# has a Dart toolchain and no reason at all to have a Rust one, and "install
+# rustup" is a strange thing for `flutter build` to say — so `hook/build.dart`
+# fetches a rustup into the build directory when there is none, and builds
+# with that.
+#
+# Nothing in ci.yml exercises that. Every GitHub runner ships rustup, and so
+# does every machine this was developed on; the fallback is the one path that
+# is only ever taken by people who are not us, which is the worst kind of code
+# to leave untested. So this workflow takes Rust off the runner first and then
+# builds exactly as ci.yml does.
+#
+# What is asserted afterwards matters as much as the build passing:
+#
+#   - the rustup landed under .dart_tool, where deleting the build directory
+#     undoes it;
+#   - the home directory is still untouched. The whole promise of doing this
+#     to somebody's machine unasked is that it leaves no trace outside the
+#     build, and `rustup-init` writing into ~/.cargo by default is precisely
+#     what `--no-modify-path` and the two home variables are there to stop.
+#
+# The iOS step is here for the shared directory rather than for iOS: that
+# build asks for two architectures, which is two hooks against one install
+# directory, and the file lock around the install is the part of this that no
+# single-architecture build can go wrong in.
+#
+# Not on every pull request — a run downloads a whole toolchain with no cache
+# to soften it, because the cache lives in the home directory this is proving
+# it does not touch. It runs when the hook or what it builds against changes,
+# and on demand.
+name: no rustup
+
+on:
+  push:
+    branches: [main]
+    # Spelled out twice: GitHub Actions does not read YAML anchors.
+    paths:
+      - 'packages/wxscan/hook/**'
+      - 'packages/wxscan/lib/src/hook/**'
+      - 'packages/wxscan/pubspec.yaml'
+      - 'packages/wxscan/rust/rust-toolchain.toml'
+      - '.github/workflows/rustup.yml'
+  pull_request:
+    paths:
+      - 'packages/wxscan/hook/**'
+      - 'packages/wxscan/lib/src/hook/**'
+      - 'packages/wxscan/pubspec.yaml'
+      - 'packages/wxscan/rust/rust-toolchain.toml'
+      - '.github/workflows/rustup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rustup-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bootstrap:
+    name: bootstrap (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      # Each host installs a different rustup release and lays it out its own
+      # way; one failing says nothing about the others.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: wxscan }
+
+      # The crate's manifest names these as siblings of the repository, the
+      # same layout a developer has, and cargo cannot resolve without them.
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/wxscan-rs, path: wxscan-rs }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/cvlite, path: cvlite }
+      - uses: actions/checkout@v4
+        with: { repository: wilinz/wxing, path: wxing }
+
+      # The point of the whole workflow. `rustup self uninstall` takes the
+      # toolchains, cargo and rustup itself with it, which leaves the runner
+      # in the state a machine that only ever installed Flutter is in.
+      #
+      # Both directories are removed afterwards regardless: the hook looks for
+      # `rustup` on the PATH and then at ~/.cargo/bin/rustup, and a leftover
+      # of either would quietly turn this into an ordinary build that proves
+      # nothing.
+      - name: Take Rust off the runner
+        shell: bash
+        run: |
+          rustup self uninstall -y || true
+          rm -rf "$HOME/.cargo" "$HOME/.rustup"
+          if command -v rustup; then
+            echo "rustup is still on the PATH; this run would prove nothing"
+            exit 1
+          fi
+          if [ -e "$HOME/.cargo" ] || [ -e "$HOME/.rustup" ]; then
+            echo "a Rust home survived the uninstall"
+            exit 1
+          fi
+
+      - uses: dart-lang/setup-dart@v1
+        with: { sdk: stable }
+
+      # No rust-cache: it restores into ~/.cargo, which is the directory this
+      # workflow exists to prove nothing writes to.
+      - name: Test the scanner
+        working-directory: wxscan/packages/wxscan
+        run: |
+          dart pub get
+          dart test
+
+      - name: Check where the toolchain went
+        shell: bash
+        working-directory: wxscan/packages/wxscan
+        run: |
+          set -eu
+          home=.dart_tool/hooks_runner/shared/wxscan/build/rustup
+          rustup="$home/cargo/bin/rustup"
+          if [ "$RUNNER_OS" = Windows ]; then rustup="$rustup.exe"; fi
+
+          if [ ! -x "$rustup" ]; then
+            echo "no rustup under $home; the hook did not bootstrap one"
+            find .dart_tool/hooks_runner/shared -maxdepth 4 || true
+            exit 1
+          fi
+          # It has to be a working rustup with the pinned toolchain under it,
+          # not just a file of the right name. Which toolchain is not this
+          # workflow's to say and not rustup's either: the hook installs none,
+          # and rustup reads rust-toolchain.toml the way it would for anyone
+          # who had it already. That is what is checked here.
+          channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)
+          installed=$(RUSTUP_HOME="$home/rustup" CARGO_HOME="$home/cargo" \
+            "$rustup" toolchain list)
+          echo "$installed"
+          case "$installed" in
+            *"$channel"*) ;;
+            *) echo "expected the pinned $channel; got the above"; exit 1 ;;
+          esac
+
+          if [ -e "$HOME/.cargo" ] || [ -e "$HOME/.rustup" ]; then
+            echo "the build wrote a Rust home into $HOME"
+            ls -la "$HOME/.cargo" "$HOME/.rustup" 2>/dev/null || true
+            exit 1
+          fi
+
+      # Two architectures, one shared install directory: the case the file
+      # lock around the install is for. Simulator rather than device so that
+      # nothing needs signing, and only here because iOS is the one target
+      # whose build asks for a pair.
+      - if: matrix.os == 'macos-latest'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.1
+          channel: stable
+
+      - if: matrix.os == 'macos-latest'
+        name: Build the example for two architectures at once
+        shell: bash
+        working-directory: wxscan/packages/wxscan_live/example
+        run: |
+          set -eu
+          flutter pub get
+          flutter build ios --simulator --debug
+          # The example is its own package with its own .dart_tool, so this
+          # bootstrapped a second time from nothing rather than reusing the
+          # one above — which is what makes the two architectures a race and
+          # not a formality.
+          test -x .dart_tool/hooks_runner/shared/wxscan/build/rustup/cargo/bin/rustup
+          if [ -e "$HOME/.cargo" ] || [ -e "$HOME/.rustup" ]; then
+            echo "the iOS build wrote a Rust home into $HOME"
+            exit 1
+          fi
