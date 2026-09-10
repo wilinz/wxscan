@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.6
+
+- **A machine without Rust can build this package.** Rust is this package's
+  dependency and not its users': someone adding it to a Flutter application has
+  a Dart toolchain and no reason at all to have a Rust one, and the build hook
+  answered that with "install rustup", which is a strange thing for `flutter
+  build` to say. Where there is no rustup, one is now fetched into the build
+  directory and the build carries on with it — checksum verified against what
+  the release publishes beside it, installed with `--no-modify-path` and both
+  Rust homes pointed inside the build directory, so nothing outside it is
+  touched and deleting it undoes all of it. Which compiler is installed does
+  not change: rustup reads `rust/rust-toolchain.toml` exactly as it does for
+  someone who had rustup already. Installing rustup yourself is still the
+  better arrangement, and the READMEs now recommend it rather than requiring
+  it: one toolchain for every project, instead of a copy per build directory
+  that a clean build throws away.
+
 ## 0.1.5
 
 - 0.1.4 was published from a development checkout, so `rust/Cargo.toml` in it

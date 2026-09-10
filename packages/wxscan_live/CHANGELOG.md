@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6
+
+- No change of its own. Released alongside `wxscan` 0.1.6, whose build hook now
+  fetches a rustup when the machine has none — which is what builds this
+  plugin's native library too.
+
 ## 0.1.5
 
 - No change of its own. Released alongside `wxscan` 0.1.5, which replaces a
