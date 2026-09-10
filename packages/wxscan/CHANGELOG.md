@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.7
+
+- No change of its own. Released alongside `wxscan_live` 0.1.7, whose camera
+  path now finds this package's bundled library on iOS and macOS.
+
 ## 0.1.6
 
 - **A machine without Rust can build this package.** Rust is this package's

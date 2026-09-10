@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.7
+
+- **Fix: the camera found no scanner on iOS and macOS.** Flutter names the
+  bundled code asset after the library the build hook produces,
+  `wxscan_core.framework`, while the plugin only looked for `wxscan.framework`.
+  The camera path reaches that lookup before any Dart call has loaded the
+  library, so nothing was found and `nativeReady` stayed false for the life of
+  the process. The `wxscan_core` paths are now tried first.
+
 ## 0.1.6
 
 - No change of its own. Released alongside `wxscan` 0.1.6, whose build hook now
